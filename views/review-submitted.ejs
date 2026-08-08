@@ -1,0 +1,10 @@
+<%- include('partials_header') %>
+<section class="auth-wrap">
+  <div class="auth-card card glass-card">
+    <p class="eyebrow">Review submitted</p>
+    <h1>Thank you for completing the review.</h1>
+    <p class="muted">Your independent assessment has been securely recorded. No further action is required for this case unless the CCI America Welfare Admin contacts you.</p>
+    <% if (access && access.case_id) { %><p><strong>Case ID:</strong> <%= access.case_id %></p><% } %>
+  </div>
+</section>
+<%- include('partials_footer') %>

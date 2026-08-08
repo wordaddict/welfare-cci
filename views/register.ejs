@@ -1,0 +1,17 @@
+<%- include('partials_header') %>
+<section class="auth-wrap">
+  <div class="auth-card card glass-card">
+    <p class="eyebrow">Applicant account</p>
+    <h1>Create Account</h1>
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+    <p class="muted">Create an applicant account to submit and track your own confidential financial assistance request.</p>
+    <form method="post" action="/register" class="form compact-form">
+      <label>Full name<input name="name" required autocomplete="name"></label>
+      <label>Email<input name="email" type="email" required autocomplete="email"></label>
+      <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <button class="btn btn-primary">Create Account</button>
+    </form>
+    <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>
+  </div>
+</section>
+<%- include('partials_footer') %>

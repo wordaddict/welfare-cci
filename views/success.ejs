@@ -1,0 +1,17 @@
+<%- include('partials_header') %>
+<section class="card success-card">
+  <div class="icon-badge success">✓</div>
+  <h1>Request Received</h1>
+  <p class="lead">Thank you. Your financial assistance request has been submitted for confidential review.</p>
+  <p>Your case ID is <strong><%= caseId %></strong>.</p>
+  <% if (trackingLink) { %>
+    <div class="tracking-success-box">
+      <h2>Track your request</h2>
+      <p>Save this private tracking link. You can also track your request later using your Case ID and full name exactly as entered on the application. The tracking page shows applicant-facing progress updates only.</p>
+      <a class="btn btn-primary" href="<%= trackingLink %>">Open tracking page</a>
+      <p class="copy-link"><%= trackingLink %></p>
+    </div>
+  <% } %>
+  <a class="btn btn-soft" href="/">Return Home</a>
+</section>
+<%- include('partials_footer') %>

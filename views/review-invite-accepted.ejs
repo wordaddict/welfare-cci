@@ -1,0 +1,16 @@
+<%- include('partials_header') %>
+<section class="auth-wrap">
+  <div class="auth-card card glass-card">
+    <% if (typeof declined !== 'undefined' && declined) { %>
+      <p class="eyebrow">Review declined</p>
+      <h1>Thank you for responding.</h1>
+      <p class="muted">Your response has been recorded. The Admin will arrange another reviewer if needed.</p>
+    <% } else { %>
+      <p class="eyebrow">Review accepted</p>
+      <h1>Thank you.</h1>
+      <p class="muted">Your acceptance has been recorded. A <strong>separate secure review link</strong> has been sent to <%= typeof reviewerEmail !== 'undefined' ? reviewerEmail : 'your email address' %>.</p>
+      <p class="muted">Please use that second link to view the confidential case materials and submit your review. You do not need an account or password.</p>
+    <% } %>
+  </div>
+</section>
+<%- include('partials_footer') %>

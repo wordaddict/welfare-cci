@@ -1,0 +1,47 @@
+<%- include('partials_header') %>
+<section class="section-title-row">
+  <div>
+    <p class="eyebrow dark">Admin</p>
+    <h1 class="section-title">Reviewer Directory</h1>
+    <p class="muted">Reviewers do not have accounts or passwords. Add their name and email here, then assign them to cases. They receive secure links by email.</p>
+  </div>
+</section>
+
+<% if (error) { %><p class="alert"><%= error %></p><% } %>
+<% if (added) { %><div class="success-panel"><b>Reviewer saved.</b><p>The reviewer is now available for case assignment.</p></div><% } %>
+
+<div class="split">
+  <section class="card panel-card">
+    <h2>Add Reviewer</h2>
+    <form method="post" action="/admin/reviewers" class="stacked-form">
+      <label>Reviewer full name<input name="name" required></label>
+      <label>Email address<input name="email" type="email" required></label>
+      <button class="btn">Add to Reviewer Directory</button>
+    </form>
+    <p class="fine-print">No password is created for the reviewer. The system stores the reviewer as a non-login contact and sends secure invitation/review links.</p>
+  </section>
+
+  <section class="card panel-card">
+    <h2>Reviewers</h2>
+    <% if (!reviewers.length) { %><div class="empty-state"><b>No reviewers yet.</b><p>Add the first reviewer using the form.</p></div><% } %>
+    <% if (reviewers.length) { %>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Open</th><th>Completed</th><th>Assignments</th><th></th></tr></thead>
+        <tbody>
+        <% reviewers.forEach(r => { %>
+          <tr>
+            <td><strong><%= r.name %></strong></td>
+            <td><%= r.email %></td>
+            <td><%= r.active ? 'Active' : 'Inactive' %></td>
+            <td><%= r.open_reviews || 0 %></td>
+            <td><%= r.completed_reviews || 0 %></td>
+            <td><%= r.total_assignments || 0 %></td>
+            <td><form method="post" action="/admin/reviewers/<%= r.id %>/toggle"><button class="small"><%= r.active ? 'Deactivate' : 'Activate' %></button></form></td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </section>
+</div>
+<%- include('partials_footer') %>

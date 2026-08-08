@@ -1,0 +1,82 @@
+<%- include('partials_header') %>
+<section class="track-status-hero">
+  <div>
+    <p class="eyebrow"><span></span> Applicant request tracking</p>
+    <h1><%= request.case_id %></h1>
+    <p><%= request.full_name %> · <%= request.request_category %> · Requested <%= money(request.amount_requested) %></p>
+  </div>
+  <div class="track-status-card">
+    <span class="pill"><%= request.urgency %></span>
+    <h2><%= statusInfo.title %></h2>
+    <p>Submitted <%= request.created_at %></p>
+  </div>
+</section>
+
+<section class="card progress-card">
+  <h2>Request progress</h2>
+  <div class="progress-steps">
+    <% statusInfo.stages.forEach((stage, index) => {
+      const isCompleted = statusInfo.isClosed || index < statusInfo.index || (index === statusInfo.index && statusInfo.stageComplete);
+      const isCurrent = !statusInfo.isClosed && index === statusInfo.index && !statusInfo.stageComplete;
+    %>
+      <div class="progress-step <%= isCompleted ? 'completed' : (isCurrent ? 'current' : '') %>">
+        <div class="step-dot"><%= index + 1 %></div>
+        <div><%= stage.label %></div>
+      </div>
+    <% }) %>
+  </div>
+  <div class="status-message">
+    <h3><%= statusInfo.title %></h3>
+    <p><%= statusInfo.message %></p>
+  </div>
+</section>
+
+<section class="grid two applicant-summary-grid">
+  <div class="card">
+    <h2>Request summary</h2>
+    <div class="mini-grid">
+      <div><span>Category</span><strong><%= request.request_category %></strong></div>
+      <div><span>Amount requested</span><strong><%= money(request.amount_requested) %></strong></div>
+      <div><span>Total need</span><strong><%= money(request.total_amount_needed) %></strong></div>
+      <div><span>Due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Current status</h2>
+    <div class="mini-grid">
+      <div><span>Status</span><strong><%= statusInfo.title %></strong></div>
+      <% if (request.worker_status === 'Yes') { %><div><span>Leadership verification</span><strong><%= request.unit_leader_verified || 'Pending' %></strong></div><% } %>
+      <div><span>Pastoral verification</span><strong><%= request.leader_verified %></strong></div>
+      <div><span>Urgency</span><strong><%= request.urgency %></strong></div>
+      <div><span>Last updated</span><strong><%= request.updated_at %></strong></div>
+    </div>
+  </div>
+</section>
+
+
+<% if (request.status === 'Follow-Up Requested' && !applicantFollowup) { %>
+<section class="card applicant-followup-card">
+  <h2>Close-out form</h2>
+  <p class="muted">Please complete this short close-out form for CCI America records and stewardship. Upload any available receipt, payment confirmation, or related evidence so the committee can complete the case file.</p>
+  <form method="post" action="/track/<%= request.tracking_token %>/followup" enctype="multipart/form-data" class="stacked-form">
+    <div class="two aligned-fields">
+      <label>Funds used as intended? *<select name="funds_used_as_intended" required><option value="">Select</option><option>Yes</option><option>No</option><option>Partly</option></select></label>
+      <label>Issue resolved? *<select name="issue_resolved" required><option value="">Select</option><option>Yes</option><option>No</option><option>Partly</option></select></label>
+    </div>
+    <label>Upload receipt or payment evidence *<input type="file" name="receipt" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" required></label>
+    <label>Brief note / explanation *<textarea name="notes" required></textarea></label>
+    <button class="btn">Submit close-out form</button>
+  </form>
+</section>
+<% } else if (applicantFollowup) { %>
+<section class="card applicant-followup-card success-panel">
+  <h2>Close-out form submitted</h2>
+  <p>Your close-out form has been received. The committee will complete final closure after review.</p>
+</section>
+<% } %>
+
+<section class="card privacy-note-card">
+  <h2>What you can see here</h2>
+  <p>This tracking page provides a simple progress update for your own request. For confidentiality and governance, it does not display internal reviewer scores, reviewer comments, committee discussion notes, or payment processing notes.</p>
+</section>
+<%- include('partials_footer') %>

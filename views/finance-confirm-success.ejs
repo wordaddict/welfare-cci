@@ -1,0 +1,12 @@
+<%- include('partials_header') %>
+<section class="card success-panel">
+  <h1><%= alreadyConfirmed ? 'Payment already confirmed' : 'Payment confirmation received' %></h1>
+  <% if (alreadyConfirmed) { %>
+    <p>Payment had already been confirmed for <strong><%= request.case_id %></strong>. No duplicate notifications were sent.</p>
+  <% } else { %>
+    <p>Thank you. Admin has been notified that payment was confirmed for <strong><%= request.case_id %></strong>, and the applicant has automatically received their approval/support email.</p>
+    <p class="muted">The close-out form will normally be sent after 3 days unless Admin sends it immediately.</p>
+  <% } %>
+  <p class="muted">You may now close this page.</p>
+</section>
+<%- include('partials_footer') %>

@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: cci-welfare-app
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /var/data/financial_support.sqlite
+      - key: SESSION_DIR
+        value: /var/data/sessions
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: AUTO_ASSIGN_REVIEWERS
+        value: "false"
+      - key: REVIEWER_SWEEP_INTERVAL_MINUTES
+        value: "15"
+      - key: FOLLOWUP_CLOSEOUT_DELAY_DAYS
+        value: "3"
+      - key: FOLLOWUP_REMINDER_INTERVAL_DAYS
+        value: "7"
+      - key: ADMIN_BOOTSTRAP_NAME
+        value: CCI Welfare Admin
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: FINANCE_TEAM_NAME
+        value: CCI USA Finance Team
+      - key: FINANCE_TEAM_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+    disk:
+      name: cci-welfare-data
+      mountPath: /var/data
+      sizeGB: 1

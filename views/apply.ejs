@@ -1,0 +1,201 @@
+<%- include('partials_header') %>
+<section class="application-hero">
+  <div>
+    <p class="eyebrow">Confidential Financial Assistance</p>
+    <h1>CCI America Financial Assistance Request</h1>
+    <p>Please complete this form as accurately as possible. Required questions are marked. The form will show only the extra questions relevant to your answers and the type of assistance requested.</p>
+    <div class="subtle-note">Your information will be used only for confidential review, required CCI verification, payment processing, and follow-up by authorized persons.</div>
+  </div>
+</section>
+<% if (error) { %><p class="alert"><%= error %></p><% } %>
+<form method="post" action="/apply" enctype="multipart/form-data" class="form card" id="welfareApplicationForm">
+  <h2>1. Basic Information & CCI Connection</h2>
+  <div class="two"><label>Full name *<input name="full_name" required></label><label>Email *<input name="email" type="email" required></label></div>
+  <div class="two"><label>Phone number *<input name="phone" required></label><label>City and state *<input name="city_state" placeholder="e.g., Harrisonburg, VA" required></label></div>
+  <div class="two"><label>Which CCI community are you connected to? *<select name="cci_connection_type" required><option value="">Select</option><option>Physical campus</option><option>MAP group</option><option>Cell church</option><option>Virtual campus</option><option>Other</option></select></label><label>Name of campus, MAP, cell church, or community *<input name="cci_community_name" required></label></div>
+  <label>How long have you been connected to CCI? *<select name="connection_duration" required><option value="">Select</option><option>Less than 1 month</option><option>1–3 months</option><option>3–6 months</option><option>6–12 months</option><option>More than 1 year</option></select></label>
+
+  <h3>Official Membership</h3>
+  <label>Are you an official member of CCI? *
+    <select id="membershipStatus" name="membership_status" required>
+      <option value="">Select</option>
+      <option value="Yes">Yes</option>
+      <option value="No">No, not yet</option>
+    </select>
+  </label>
+  <p class="field-help">Select Yes if you have completed the CCI membership process/class and are recognized as an official member.</p>
+
+  <section class="membership-conditional" data-membership="Yes">
+    <label>Upload your CCI Membership Certificate *
+      <input type="file" name="membership_certificate" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx">
+    </label>
+    <p class="field-help">A membership certificate is required when you select Yes.</p>
+  </section>
+
+  <section class="membership-conditional" data-membership="No">
+    <label>Do you belong to a CCI MAP group? *
+      <select id="mapGroupStatus" name="map_group_status">
+        <option value="">Select</option>
+        <option>Yes</option>
+        <option>No</option>
+      </select>
+    </label>
+
+    <section class="map-conditional" data-map="Yes">
+      <label>Name of your MAP group *<input name="map_group_name"></label>
+      <label>Upload an attestation letter from your MAP Leader *
+        <input type="file" name="map_leader_attestation" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx">
+      </label>
+      <p class="field-help">This letter should confirm your participation in the MAP group.</p>
+    </section>
+
+    <section class="map-conditional" data-map="No">
+      <p class="subtle-note">You may still apply if you attend CCI but have not completed the membership process and do not belong to a MAP group. Your Pastor will be asked to verify your CCI connection.</p>
+    </section>
+  </section>
+
+  <h3>Worker (Celeforce) Status</h3>
+  <label>Are you a worker (Celeforce)? *
+    <select id="workerStatus" name="worker_status" required>
+      <option value="">Select</option>
+      <option>Yes</option>
+      <option>No</option>
+    </select>
+  </label>
+
+  <section class="worker-conditional" data-worker="Yes">
+    <label>How long have you been a worker (Celeforce)? *</label>
+    <div class="two">
+      <label>Number *
+        <select name="worker_duration_value">
+          <option value="">Select</option>
+          <% for (let i = 1; i <= 60; i++) { %><option value="<%= i %>"><%= i %></option><% } %>
+        </select>
+      </label>
+      <label>Months / Years *
+        <select name="worker_duration_unit">
+          <option value="">Select</option>
+          <option>Months</option>
+          <option>Years</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="verification-subsection">
+      <p class="eyebrow dark">Leadership verification</p>
+      <h3>Unit & Unit Head Details</h3>
+      <p class="field-help">Because you selected that you are a Celeforce worker, your Unit Head must verify your service before the request is sent to your Pastor for pastoral verification.</p>
+      <label>Which unit do you serve in? *<input name="unit_name" placeholder="e.g., Choir, Ushering, Media, Children's Church"></label>
+      <div class="two"><label>Name of your Unit Head *<input name="unit_leader_name"></label><label>Unit Head's email address *<input name="unit_leader_email" type="email"></label></div>
+      <label>Unit Head's phone number *<input name="unit_leader_phone"></label>
+    </div>
+  </section>
+
+  <h3>Pastoral Verification</h3>
+  <input type="hidden" name="leader_role" value="Pastor">
+  <div class="two"><label>Name of your Pastor *<input name="leader_name" required></label><label>Pastor's email address *<input name="leader_email" type="email" required></label></div>
+  <label>Pastor's phone number *<input name="leader_phone" required></label>
+  <p class="field-help">If you are not a Celeforce worker, the system will send your Pastor a secure verification link after submission. If you are a Celeforce worker, the Unit Head verification will be completed first, followed by pastoral verification.</p>
+  <label>Have you informed your Pastor about this application? *
+    <select id="pastorInformed" name="pastor_informed" required>
+      <option value="">Select</option>
+      <option>Yes</option>
+      <option>No</option>
+    </select>
+  </label>
+  <div id="pastorInformWarning" class="alert" style="display:none;">Please inform your Pastor before submitting this application. Your Pastor must complete the pastoral verification.</div>
+
+  <h2>2. Type of Request</h2>
+  <label>What type of financial assistance are you requesting? *
+    <select id="requestCategory" name="request_category" required>
+      <option value="">Select</option>
+      <option>Rent or Housing</option>
+      <option>Utilities</option>
+      <option>Groceries or Food</option>
+      <option>Medical or Health-Related Support</option>
+      <option>Tuition or Education</option>
+      <option>Emergency Accommodation</option>
+      <option>Special CCI Event Support</option>
+      <option>Other Exceptional Need</option>
+    </select>
+  </label>
+
+  <section class="conditional" data-category="Rent or Housing"><h3>Rent or Housing Details</h3><div class="two"><label>How much rent is due?<input name="cat_rent_due" type="number" step="0.01"></label><label>Is there a risk of eviction or housing loss? *<select name="cat_eviction_risk"><option value="">Select</option><option>Yes</option><option>No</option></select></label></div></section>
+  <section class="conditional" data-category="Utilities"><h3>Utilities Details</h3><div class="two"><label>Utility type *<select name="cat_utility_type"><option value="">Select</option><option>Electricity</option><option>Water</option><option>Gas</option><option>Internet</option><option>Other</option></select></label><label>Is there a disconnection notice? *<select name="cat_disconnection_notice"><option value="">Select</option><option>Yes</option><option>No</option></select></label></div></section>
+  <section class="conditional" data-category="Groceries or Food"><h3>Groceries or Food Details</h3><div class="two"><label>How many people are in your household? *<input name="cat_household_size" type="number" min="1"></label><label>Is this an urgent food need? *<select name="cat_food_urgent"><option value="">Select</option><option>Yes</option><option>No</option></select></label></div></section>
+  <section class="conditional" data-category="Medical or Health-Related Support"><h3>Medical Details</h3><div class="two"><label>Medical need type *<select name="cat_medical_type"><option value="">Select</option><option>Medication</option><option>Hospital bill</option><option>Doctor visit</option><option>Emergency care</option><option>Other</option></select></label><label>Is this urgent? *<select name="cat_medical_urgent"><option value="">Select</option><option>Yes</option><option>No</option></select></label></div></section>
+  <section class="conditional" data-category="Tuition or Education"><h3>Tuition or Education Details</h3><label>Name of school or institution *<input name="cat_school_name"></label><label>Is this related to continuing enrollment, graduation, or employment improvement? *<select name="cat_education_purpose"><option value="">Select</option><option>Yes</option><option>No</option></select></label></section>
+  <section class="conditional" data-category="Emergency Accommodation"><h3>Emergency Accommodation Details</h3><label>Where are you currently staying? *<input name="cat_current_accommodation"></label><label>How soon is accommodation needed? *<select name="cat_accommodation_timeline"><option value="">Select</option><option>Today</option><option>Within 24 hours</option><option>Within 2–3 days</option><option>Later</option></select></label><label>Is there a safety concern? *<select name="cat_safety_concern"><option value="">Select</option><option>Yes</option><option>No</option></select></label></section>
+  <section class="conditional" data-category="Special CCI Event Support">
+    <h3>Special CCI Event Support Details</h3>
+    <label>Name of the CCI event *<input name="cat_event_name" placeholder="Enter the event name"></label>
+    <label>What do you need support for? *
+      <select name="cat_event_support_type">
+        <option value="">Select</option>
+        <option>Transportation / Flight</option>
+        <option>Accommodation</option>
+        <option>Transportation / Flight and Accommodation</option>
+      </select>
+    </label>
+    <label>Briefly describe the event-related support you need *<textarea name="cat_event_support_details" placeholder="For example, flight to the event location, local transportation, hotel accommodation, or a combination."></textarea></label>
+  </section>
+  <section class="conditional" data-category="Other Exceptional Need"><h3>Exceptional Need Details</h3><label>Describe the need *<textarea name="cat_other_description"></textarea></label><label>Why is this urgent or important? *<textarea name="cat_other_urgency"></textarea></label></section>
+
+  <h2>3. Request Details</h2>
+  <div class="two"><label>Total amount needed *<input id="totalAmountNeeded" name="total_amount_needed" type="number" step="0.01" min="0" required></label><label>Amount you are requesting from CCI America *<input id="amountRequested" name="amount_requested" type="number" step="0.01" min="0" required></label></div>
+  <div class="two"><label>How much can you personally contribute toward this need? *<input id="applicantContribution" name="applicant_contribution" type="number" step="0.01" min="0" value="0" required></label><label>How much confirmed support will you receive from other sources? *<input id="otherConfirmedSupport" name="other_confirmed_support" type="number" step="0.01" min="0" value="0" required></label></div>
+  <p class="field-help">The system will use these figures to calculate the remaining financial gap. Enter 0 if you cannot contribute or have no confirmed support from other sources.</p>
+  <div id="financialGapPreview" class="subtle-note">Estimated remaining financial gap: $0.00</div>
+  <label>Payment due date *<input name="due_date" type="date" required></label>
+  <label>Please briefly explain your current situation and why you need assistance. *<textarea name="situation" required></textarea></label>
+  <label>What may happen if support is not provided? *<textarea name="consequence" required></textarea></label>
+  <label>Are dependents directly affected by this situation? *
+    <select name="dependents_affected" required>
+      <option value="">Select</option>
+      <option>No</option>
+      <option>Child / children</option>
+      <option>Spouse</option>
+      <option>Elderly dependent</option>
+      <option>Other dependent</option>
+      <option>Multiple dependents</option>
+    </select>
+  </label>
+  <fieldset class="checklist-fieldset">
+    <legend>Which steps have you already taken to address this need? Select all that apply. *</legend>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Contacted family or friends"> Contacted family or friends</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Contacted landlord, vendor, school, or service provider"> Contacted the landlord, vendor, school, or service provider</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Requested a payment plan or extension"> Requested a payment plan or extension</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Applied for community or public assistance"> Applied for community or public assistance</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Sought additional employment or income"> Sought additional employment or income</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Contributing personally toward the need"> Contributing personally toward the need</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="Other action taken"> Other action taken</label>
+    <label class="check"><input type="checkbox" name="effort_actions" value="None yet"> None yet</label>
+  </fieldset>
+  <label>Please briefly explain the steps you selected above, including the outcome of any help you sought. *<textarea name="applicant_effort" required></textarea></label>
+  <div class="two aligned-fields"><label>Is this one-time or ongoing? *<select name="one_time_or_ongoing" required><option value="">Select</option><option>One-time</option><option>Ongoing</option><option>Not sure</option></select></label><label>Have you received financial assistance from CCI America before? *<select name="prior_assistance" required><option value="">Select</option><option>Yes</option><option>No</option></select></label></div>
+  <label>If yes, briefly state when and what it was for<textarea name="prior_assistance_details"></textarea></label><p class="field-help">Required only if you selected Yes above.</p>
+
+  <h2>4. Payment and Documents</h2>
+  <label>Where possible, CCI America prefers direct payment to vendors/service providers. Can direct payment be made for this request? *<select id="directPaymentPossible" name="direct_payment_possible" required><option value="">Select</option><option>Yes</option><option>No</option></select></label>
+  <section class="payment-conditional" data-payment="Yes">
+    <label>Provide vendor/service-provider payment details or instructions. *<textarea name="payment_details"></textarea></label>
+    <p class="field-help">Examples: landlord/property manager details, utility company account details, school payment portal/invoice instructions, medical provider information, or other direct payment instructions.</p>
+  </section>
+  <section class="payment-conditional" data-payment="No">
+    <label>If direct vendor/service-provider payment is not possible, briefly explain why. *<textarea name="direct_payment_explanation"></textarea></label>
+    <h3>Applicant Zelle details for direct disbursement</h3>
+    <div class="three zelle-grid">
+      <label>Name associated with Zelle *<input name="zelle_name"></label>
+      <label>Email associated with Zelle *<input name="zelle_email" type="email"></label>
+      <label>Phone number associated with Zelle *<input name="zelle_phone"></label>
+    </div>
+  </section>
+  <label>Upload supporting documents for the financial need. Examples include bills, invoices, rent/lease notices, eviction or disconnection notices, medical bills, prescription receipts, tuition statements, bank statements showing the relevant charge, or proof of payment due. You may upload PDF, image, or Word files. Max 6 files, 10 MB each. *<input type="file" name="documents" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" required></label>
+
+  <h2>5. Declaration</h2>
+  <label class="check"><input type="checkbox" name="applicant_declaration" value="1" required> I confirm that the information provided is true and accurate.</label>
+  <label class="check"><input type="checkbox" name="consent_leader_contact" value="1" required> I consent to the Financial Assistance Committee contacting my Unit Head, when applicable, and my Pastor for verification.</label>
+  <label class="check"><input type="checkbox" name="consent_proof_of_use" value="1" required> I understand that approval is not guaranteed and that proof of use may be required if funds are paid directly to me.</label>
+  <button class="btn" id="submitApplicationButton">Submit Financial Assistance Request</button>
+</form>
+<%- include('partials_footer') %>

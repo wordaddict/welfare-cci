@@ -1,0 +1,25 @@
+<%- include('partials_header') %>
+<section class="track-hero card">
+  <div>
+    <p class="eyebrow"><span></span> Secure applicant portal</p>
+    <h1>Track your financial assistance request</h1>
+    <p class="lead">Enter your Case ID and full name exactly as written on the application to view applicant-facing progress updates.</p>
+  </div>
+</section>
+
+<section class="card track-card">
+  <% if (error) { %><div class="alert"><%= error %></div><% } %>
+  <form method="post" action="/track" class="form compact-form">
+    <div class="grid two">
+      <label>Case ID
+        <input name="case_id" placeholder="CCI-FIN-2026-001" required>
+      </label>
+      <label>Full name
+        <input name="full_name" placeholder="Temi Kayode" autocomplete="name" required>
+      </label>
+    </div>
+    <button class="btn btn-primary">Track Request</button>
+  </form>
+  <p class="muted small-note">This page only shows your own request progress. Use the full name entered on the application. Internal reviewer comments, reviewer scores, and committee discussions remain confidential.</p>
+</section>
+<%- include('partials_footer') %>

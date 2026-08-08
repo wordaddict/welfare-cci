@@ -1,0 +1,32 @@
+<%- include('partials_header') %>
+<section class="card panel-card finance-confirm-card">
+  <p class="eyebrow dark">CCI USA Finance Team</p>
+  <h1>Confirm Payment</h1>
+  <p class="muted">Use this secure page after payment has been completed. Submitting this form automatically notifies Admin and sends the applicant their approval/support message. The close-out form is normally sent after 3 days, unless Admin chooses to send it immediately.</p>
+
+  <div class="info-grid compact">
+    <div><span>Case ID</span><strong><%= request.case_id %></strong></div>
+    <div><span>Applicant</span><strong><%= request.full_name %></strong></div>
+    <div><span>Decision</span><strong><%= request.decision || 'Pending' %></strong></div>
+    <div><span>Amount approved</span><strong><%= money(request.amount_approved || request.amount_requested) %></strong></div>
+    <div><span>Payment route</span><strong><%= request.direct_payment_possible || 'Not provided' %></strong></div>
+    <div><span>Due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+  </div>
+
+  <div class="subtle-note"><b>Payment details/instructions:</b><br><%= request.payment_details || request.direct_payment_explanation || 'No payment details provided.' %></div>
+
+  <form method="post" action="/finance-confirm/<%= request.finance_confirm_token %>" enctype="multipart/form-data" class="stacked-form">
+    <div class="two aligned-fields">
+      <label>Confirmed by / finance officer name *<input name="confirmed_by" required></label>
+      <label>Amount paid *<input name="amount_paid" type="number" step="0.01" value="<%= request.amount_approved || request.amount_requested %>" required></label>
+    </div>
+    <div class="two aligned-fields">
+      <label>Payment method/platform *<input name="payment_method" placeholder="e.g., Zelle, ACH, check, vendor portal" required></label>
+      <label>Payment reference/confirmation ID *<input name="payment_reference" required></label>
+    </div>
+    <label>Upload payment confirmation/receipt, if available<input type="file" name="confirmation_file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"></label>
+    <label>Finance confirmation notes<textarea name="confirmation_notes" placeholder="Optional notes for the committee"></textarea></label>
+    <button class="btn">Confirm Payment Completed</button>
+  </form>
+</section>
+<%- include('partials_footer') %>

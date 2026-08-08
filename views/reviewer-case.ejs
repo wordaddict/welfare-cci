@@ -1,0 +1,324 @@
+<%- include('partials_header') %>
+
+<section class="case-hero reviewer-case-hero">
+  <div>
+    <p class="eyebrow">Secure reviewer workspace</p>
+    <h1><%= request.case_id %></h1><p class="muted">Reviewer: <strong><%= reviewerName || "Assigned reviewer" %></strong></p>
+    <p><%= request.full_name %> · <%= request.request_category %> · <%= money(request.amount_requested) %></p>
+  </div>
+  <div class="case-status-panel">
+    <span class="tag <%= request.urgency==='Emergency'?'danger':(request.urgency==='Urgent'?'warning':'') %>"><%= request.urgency %></span>
+    <strong><%= request.status === 'Awaiting Leadership Verification' ? 'Awaiting Leadership Verification' : request.status === 'Awaiting Pastoral Verification' || request.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : request.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : request.status %></strong>
+    <small>This secure link gives access only to this assigned case. No login is required.</small>
+  </div>
+</section>
+
+<div class="reviewer-layout">
+  <section class="card panel-card">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Applicant submission</p>
+        <h2>Applicant & Request Details</h2>
+      </div>
+    </div>
+    <div class="info-grid">
+      <div><span>Name</span><strong><%= request.full_name %></strong></div>
+      <div><span>Email</span><strong class="wrap-text"><%= request.email %></strong></div>
+      <div><span>Phone</span><strong><%= request.phone %></strong></div>
+      <div><span>Location</span><strong><%= request.city_state %></strong></div>
+      <div><span>CCI community</span><strong><%= request.cci_connection_type %> · <%= request.cci_community_name %></strong></div>
+      <div><span>Length of connection with CCI</span><strong><%= request.connection_duration %></strong></div>
+      <div><span>Official CCI membership</span><strong><%= request.membership_status === 'Yes' ? 'Official member' : 'Not yet an official member' %></strong></div>
+      <div><span>MAP group participation</span><strong><%= request.membership_status === 'No' ? (request.map_group_status === 'Yes' ? `Yes${request.map_group_name ? ` · ${request.map_group_name}` : ''}` : 'No MAP group reported') : 'Not applicable' %></strong></div>
+      <div><span>Celeforce worker status</span><strong><%= request.worker_status === 'Yes' ? 'Celeforce worker' : 'Not a Celeforce worker' %></strong></div>
+      <% if (request.worker_status === 'Yes') { %><div><span>Unit</span><strong><%= request.unit_name || 'Not provided' %></strong></div><% } %>
+      <div><span>Amount requested from CCI America</span><strong><%= money(request.amount_requested) %></strong></div>
+      <div><span>Total amount needed</span><strong><%= money(request.total_amount_needed) %></strong></div>
+      <div><span>Applicant's contribution</span><strong><%= money(request.applicant_contribution || 0) %></strong></div>
+      <div><span>Confirmed support from other sources</span><strong><%= money(request.other_confirmed_support || 0) %></strong></div>
+      <div><span>Calculated remaining financial gap</span><strong><%= money(systemAssessment.actualGap) %></strong></div>
+      <div><span>Dependents affected</span><strong><%= request.dependents_affected || 'No' %></strong></div>
+      <div><span>Due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+      <div><span>One-time/ongoing</span><strong><%= request.one_time_or_ongoing %></strong></div>
+      <div><span>Prior assistance</span><strong><%= request.prior_assistance %></strong></div>
+    </div>
+
+    <h3>Situation</h3>
+    <p><%= request.situation %></p>
+    <h3>What may happen without support</h3>
+    <p><%= request.consequence %></p>
+    <h3>Applicant effort / other help sought</h3>
+    <p><%= request.applicant_effort || 'Not provided.' %></p>
+    <% if (request.prior_assistance_details) { %><h3>Prior assistance details</h3><p><%= request.prior_assistance_details %></p><% } %>
+
+    <h3>Category Details</h3>
+    <%
+      const categoryLabels = {
+        rent_due: 'Rent due', eviction_risk: 'Eviction or housing-loss risk', utility_type: 'Utility type', disconnection_notice: 'Disconnection notice',
+        household_size: 'Household size', food_urgent: 'Urgent food need',
+        medical_type: 'Medical need type', medical_urgent: 'Urgent medical need',
+        school_name: 'School/institution', education_purpose: 'Related to enrollment, graduation, or employment improvement',
+        current_accommodation: 'Current accommodation', accommodation_timeline: 'Accommodation timeline', safety_concern: 'Safety concern',
+        event_name: 'CCI event', event_support_type: 'Event support requested', event_support_details: 'Event support details',
+        other_description: 'Other need description', other_urgency: 'Why this is urgent or important', category: 'Category'
+      };
+      const visibleCategoryDetails = Object.entries(categoryDetails || {}).filter(([key, value]) => value && String(value).trim() !== '');
+    %>
+    <% if (visibleCategoryDetails.length === 0) { %>
+      <p class="muted">No additional category-specific details were provided.</p>
+    <% } else { %>
+      <dl class="detail-list">
+        <% visibleCategoryDetails.forEach(([key, value]) => { %>
+          <div><dt><%= categoryLabels[key] || key %></dt><dd><%= value %></dd></div>
+        <% }) %>
+      </dl>
+    <% } %>
+
+    <h3>Payment information</h3>
+    <p><b>Can CCI pay vendor/service provider directly?</b> <%= request.direct_payment_possible %></p>
+    <% if (request.direct_payment_possible === 'Yes') { %>
+      <p><b>Vendor/service-provider payment details:</b> <%= request.payment_details || 'Not provided.' %></p>
+    <% } else { %>
+      <p><b>Reason direct vendor payment is not possible:</b> <%= request.direct_payment_explanation || 'Not provided.' %></p>
+      <div class="info-grid compact">
+        <div><span>Zelle name</span><strong><%= request.zelle_name || 'Not provided' %></strong></div>
+        <div><span>Zelle email</span><strong class="wrap-text"><%= request.zelle_email || 'Not provided' %></strong></div>
+        <div><span>Zelle phone</span><strong><%= request.zelle_phone || 'Not provided' %></strong></div>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (request.worker_status === 'Yes') { %>
+  <section class="card panel-card leadership-panel">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Leadership verification</p>
+        <h2>Unit Head Response</h2>
+      </div>
+      <span class="status-pill <%= request.unit_leader_verified === 'Complete' ? 'success' : 'warning' %>"><%= request.unit_leader_verified || 'Pending' %></span>
+    </div>
+    <div class="info-grid compact leader-contact-grid">
+      <div><span>Unit reported by applicant</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
+      <div><span>Unit Head identified by applicant</span><strong><%= request.unit_leader_name || 'Not provided' %></strong></div>
+    </div>
+    <% if (!leadershipVerifications || !leadershipVerifications.length) { %>
+      <div class="empty-state"><b>No leadership response recorded.</b><p>The request should not proceed to pastoral verification until the Unit Head verification is completed.</p></div>
+    <% } %>
+    <% (leadershipVerifications || []).forEach(v => { %>
+      <div class="leader-response-card">
+        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= v.created_at %></small></div>
+        <div class="info-grid compact leader-contact-grid">
+          <div><span>Celeforce worker status confirmed by Unit Head</span><strong><%= v.worker_confirmed %></strong></div>
+          <div><span>Service in stated unit confirmed by Unit Head</span><strong><%= v.unit_confirmed %></strong></div>
+          <div><span>Verified length of service in unit</span><strong><%= v.service_duration_value %> <%= v.service_duration_unit %></strong></div>
+        </div>
+        <% if (v.worker_confirmed !== request.worker_status || v.unit_confirmed !== 'Yes') { %><div class="alert"><b>Verification mismatch:</b> The Unit Head's response does not fully match the applicant's Celeforce or unit information.</div><% } %>
+        <div class="leader-text-block"><span>Unit Head's comments</span><p><%= v.comments %></p></div>
+      </div>
+    <% }) %>
+  </section>
+  <% } %>
+
+  <section class="card panel-card leadership-panel">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Pastoral verification</p>
+        <h2>Pastor Response</h2>
+      </div>
+      <span class="status-pill <%= request.leader_verified === 'Complete' || request.leader_verified === 'Yes' ? 'success' : request.leader_verified === 'Pending' ? '' : 'warning' %>"><%= request.leader_verified %></span>
+    </div>
+
+    <h3 class="mini-heading">Pastor identified by applicant</h3>
+    <div class="info-grid compact leader-contact-grid">
+      <div><span>Name</span><strong><%= request.leader_name %></strong></div>
+      <div><span>Email</span><strong class="wrap-text"><%= request.leader_email || 'Not provided' %></strong></div>
+      <div><span>Phone</span><strong><%= request.leader_phone || 'Not provided' %></strong></div>
+    </div>
+
+    <% if (!verifications.length) { %>
+      <div class="empty-state"><b>No pastoral response yet.</b><p>Your review should normally be completed after the Pastor submits the verification.</p></div>
+    <% } %>
+
+    <% verifications.forEach(v=>{ %>
+      <div class="leader-response-card">
+        <div class="leader-response-header"><div><span>Submitted by Pastor</span><strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong></div><small><%= v.created_at %></small></div>
+        <div class="info-grid compact leader-contact-grid">
+          <div><span>Pastor email</span><strong class="wrap-text"><%= v.verifier_email || request.leader_email || 'Not provided' %></strong></div>
+          <div><span>Pastor phone</span><strong><%= v.verifier_phone || request.leader_phone || 'Not provided' %></strong></div>
+          <div><span>Current CCI participation confirmed by Pastor</span><strong><%= v.active_connection || 'Not recorded' %></strong></div>
+          <div><span>Official CCI membership confirmed by Pastor</span><strong><%= v.member_confirmed || 'Not recorded' %></strong></div>
+          <div><span>Celeforce worker status confirmed by Pastor</span><strong><%= v.worker_confirmed || 'Not recorded' %></strong></div>
+          <div><span>Length of time Pastor has known applicant</span><strong><%= v.known_duration_value ? `${v.known_duration_value} ${v.known_duration_unit || ''}` : 'Not recorded' %></strong></div>
+        </div>
+        <% if ((v.member_confirmed && v.member_confirmed !== request.membership_status) || (v.worker_confirmed && v.worker_confirmed !== (request.worker_status || 'No'))) { %>
+          <div class="alert"><b>Verification mismatch:</b> The Pastor's answer does not match the applicant's membership and/or worker status.</div>
+        <% } %>
+        <div class="leader-text-block"><span>Pastor's comments / information for decision</span><p><%= v.decision_comments || v.pastoral_context || 'No comments recorded.' %></p></div>
+        <% if (v.support_letter_file) { %><a class="btn btn-soft" href="/review/<%= reviewToken %>/uploads/<%= v.support_letter_file %>" target="_blank">View additional pastoral support letter</a><% } %>
+      </div>
+    <% }) %>
+  </section>
+
+  <section class="card panel-card">
+    <h2>Applicant Documents</h2>
+    <% if (!docs.length) { %><p class="muted">No documents uploaded.</p><% } else { %>
+      <ul class="doc-list"><% docs.forEach(d=>{ %><li><a href="/review/<%= reviewToken %>/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a><span><%= d.document_type || 'Supporting document' %> · <%= Math.round(d.size_bytes/1024) %> KB</span></li><% }) %></ul>
+    <% } %>
+  </section>
+
+  <section class="card panel-card review-private-card">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Private reviewer section</p>
+        <h2>My Review</h2>
+      </div>
+      <span class="tag <%= myReview ? 'success' : '' %>"><%= myReview ? 'Saved' : 'Not started' %></span>
+    </div>
+    <p class="muted">Only you and the Admin can see your review. Other assigned reviewers cannot see your assessment.</p>
+    <% if (myReview && (typeof query !== 'undefined' ? query.submitted : false)) { %>
+      <div class="success-panel">
+        <h3>Thank you for submitting your review.</h3>
+        <p>Your assessment has been saved and is now available to the admin/committee lead for final discussion.</p>
+        <p class="muted">No further action is required.</p>
+      </div>
+    <% } else if (myReview) { %>
+      <div class="success-panel">
+        <h3>Your review has been submitted.</h3>
+        <p>You have already submitted this review. Contact the admin if changes are needed.</p>
+        <p class="muted">No further action is required.</p>
+      </div>
+    <% } else { %>
+    <section class="system-assessment-panel">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow dark">Automated decision support</p>
+          <h2>System Preliminary Assessment</h2>
+          <p class="muted">Pre-filled from the applicant's structured responses, uploaded records, verification responses, prior CCI Welfare history in this database, and policy rules. This does not make the final decision.</p>
+        </div>
+        <div class="system-score-badge"><span>Preliminary score</span><strong><%= systemAssessment.total %>/21</strong></div>
+      </div>
+
+      <div class="eligibility-banner <%= systemAssessment.eligibility.status === 'Pass' ? 'success' : systemAssessment.eligibility.status === 'Escalate' ? 'danger' : 'warning' %>">
+        <b>Eligibility first filter: <%= systemAssessment.eligibility.status %></b>
+        <ul><% systemAssessment.eligibility.reasons.forEach(reason => { %><li><%= reason %></li><% }) %></ul>
+      </div>
+
+      <div class="system-rating-grid">
+        <% Object.values(systemAssessment.ratings).forEach(item => { %>
+          <div class="system-rating-card">
+            <div><span><%= item.label %></span><strong><%= item.score %>/3</strong></div>
+            <p><%= item.reason %></p>
+          </div>
+        <% }) %>
+      </div>
+
+      <div class="financial-gap-strip">
+        <div><span>Total need</span><strong><%= money(systemAssessment.totalNeed) %></strong></div>
+        <div><span>Applicant contribution</span><strong><%= money(systemAssessment.contribution) %></strong></div>
+        <div><span>Other confirmed support</span><strong><%= money(systemAssessment.otherSupport) %></strong></div>
+        <div><span>Calculated gap</span><strong><%= money(systemAssessment.actualGap) %></strong></div>
+        <div><span>Requested from CCI</span><strong><%= money(systemAssessment.requested) %></strong></div>
+      </div>
+
+      <% if (systemAssessment.flags.length) { %>
+        <div class="policy-flags warning"><b>Items requiring reviewer attention</b><ul><% systemAssessment.flags.forEach(flag => { %><li><%= flag %></li><% }) %></ul></div>
+      <% } %>
+      <% if (systemAssessment.escalationRequired) { %>
+        <div class="policy-flags danger"><b>System indicates Pastorate escalation may be required</b><ul><% systemAssessment.escalationReasons.forEach(reason => { %><li><%= reason %></li><% }) %></ul></div>
+      <% } %>
+      <p class="fine-print"><b>Interpretation:</b> <%= systemAssessment.interpretation %>. Scores are decision-support only and remain subject to independent reviewer judgment.</p>
+    </section>
+
+    <div class="criteria-guide">
+      <h3>Reviewer scoring guide</h3>
+      <p>Use 1 = low/weak, 2 = moderate, and 3 = strong/high. Scores support discussion; they do not replace committee judgment.</p>
+      <ul>
+        <li><b>Eligibility:</b> shown separately above as the policy's first filter; it is not included in the 21-point Appendix 1 score.</li>
+        <li><b>Urgency:</b> timing, immediate risk, deadline, eviction/disconnection/medical/food/safety concern.</li>
+        <li><b>Severity:</b> impact on housing, health, food, utilities, safety, dependents, or basic stability.</li>
+        <li><b>Requested amount / financial fit:</b> consider what the applicant is requesting, what the evidence supports, and what the committee can reasonably provide.</li>
+        <li><b>Applicant effort:</b> steps already taken, other support sought, personal contribution where possible.</li>
+        <li><b>Assistance history:</b> prior support, frequency of requests, and evidence of changed circumstances.</li>
+        <li><b>Policy alignment:</b> whether the request falls within covered categories, limits, and escalation rules.</li>
+        <li><b>Documentation strength:</b> whether bills/notices/invoices/pastoral support adequately verify the request.</li>
+      </ul>
+    </div>
+    <form method="post" action="/review/<%= reviewToken %>" class="review-form">
+      <label>Conflict of interest?
+        <select name="conflict_of_interest" required>
+          <% ['No conflict','Conflict declared - recused'].forEach(x=>{ %><option <%= myReview && myReview.conflict_of_interest===x ? 'selected' : '' %>><%= x %></option><% }) %>
+        </select>
+      </label>
+      <% const scoreOptions = ['','1','2','3']; %>
+      <div class="grid ratings score-input-grid">
+        <% [
+          ['urgency_rating','Urgency','urgency'],
+          ['severity_rating','Severity of impact','severity'],
+          ['gap_rating','Financial gap','gap'],
+          ['effort_rating','Applicant effort / responsibility','effort'],
+          ['history_rating','History of assistance','history'],
+          ['policy_rating','Policy alignment','policy'],
+          ['documentation_rating','Suitability of documentation','documentation']
+        ].forEach(([field,label,key]) => { const defaultScore = myReview ? Number(myReview[field]) : Number(systemAssessment.ratings[key].score); %>
+          <label><%= label %>
+            <select name="<%= field %>" class="score-field" data-system-score="<%= systemAssessment.ratings[key].score %>" required>
+              <option value="">Select score</option>
+              <option value="1" <%= defaultScore===1 ? 'selected' : '' %>>1 - Low / weak</option>
+              <option value="2" <%= defaultScore===2 ? 'selected' : '' %>>2 - Moderate</option>
+              <option value="3" <%= defaultScore===3 ? 'selected' : '' %>>3 - Strong / high</option>
+            </select>
+          </label>
+        <% }) %>
+      </div>
+      <div class="score-total-box">
+        <span>Total review score</span>
+        <strong><span id="reviewScoreTotal"><%= myReview ? myReview.score_total || '' : '' %></span>/21</strong>
+        <small>Seven Appendix 1 criteria are scored 1–3. The eligibility first filter is shown separately and is not added to the score.</small>
+      </div>
+      <div class="two">
+        <label>Calculated financial gap<input type="number" step="0.01" name="actual_gap_display" value="<%= Number(systemAssessment.actualGap || 0).toFixed(2) %>" readonly></label>
+        <label>Recommended amount<input type="number" step="0.01" name="recommended_amount" value="<%= myReview ? myReview.recommended_amount || '' : '' %>"></label>
+      </div>
+      <label>Do you agree with the system-generated preliminary assessment? *
+        <select name="system_assessment_agreement" id="systemAssessmentAgreement" required>
+          <option value="">Select</option>
+          <% ['Yes','Partially','No'].forEach(x=>{ %><option value="<%= x %>" <%= myReview && myReview.system_assessment_agreement===x ? 'selected' : '' %>><%= x %></option><% }) %>
+        </select>
+      </label>
+      <label>Reason for any disagreement or score change
+        <textarea name="override_reason" id="overrideReason" placeholder="Required if you select Partially/No or change any pre-filled score."><%= myReview ? myReview.override_reason || '' : '' %></textarea>
+      </label>
+      <label>Recommended decision
+        <select name="recommended_decision" required>
+          <% ['Full Approval','Partial Approval','Conditional Approval','Deferred','Denied','Escalated to Pastorate'].forEach(x=>{ %><option <%= myReview && myReview.recommended_decision===x ? 'selected' : '' %>><%= x %></option><% }) %>
+        </select>
+      </label>
+      <label>Reviewer notes<textarea name="notes"><%= myReview ? myReview.notes || '' : '' %></textarea></label>
+      <button class="btn">Submit My Review</button>
+    </form>
+    <% } %>
+  </section>
+</div>
+
+<script>
+  function updateReviewScoreTotal() {
+    const fields = document.querySelectorAll('.score-field');
+    let total = 0;
+    fields.forEach(field => { total += Number(field.value || 0); });
+    const target = document.getElementById('reviewScoreTotal');
+    if (target) target.textContent = total || '';
+  }
+  function updateOverrideRequirement() {
+    const agreement = document.getElementById('systemAssessmentAgreement');
+    const override = document.getElementById('overrideReason');
+    if (!agreement || !override) return;
+    const changed = Array.from(document.querySelectorAll('.score-field')).some(field => Number(field.value || 0) !== Number(field.dataset.systemScore || 0));
+    override.required = agreement.value === 'Partially' || agreement.value === 'No' || changed;
+  }
+  document.querySelectorAll('.score-field').forEach(field => field.addEventListener('change', () => { updateReviewScoreTotal(); updateOverrideRequirement(); }));
+  const agreement = document.getElementById('systemAssessmentAgreement');
+  if (agreement) agreement.addEventListener('change', updateOverrideRequirement);
+  updateReviewScoreTotal();
+  updateOverrideRequirement();
+</script>
+<%- include('partials_footer') %>

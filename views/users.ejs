@@ -1,0 +1,23 @@
+<%- include('partials_header') %>
+<h1 class="section-title">Login Accounts</h1>
+<p class="muted">Only Applicants and Admins use password-based login. Reviewer contacts are managed separately under <a href="/admin/reviewers">Reviewer Directory</a>.</p>
+<% if (error) { %><p class="alert"><%= error %></p><% } %>
+<div class="split">
+  <section class="card panel-card">
+    <h2>Create Login Account</h2>
+    <form method="post" action="/admin/users" class="stacked-form">
+      <label>Name<input name="name" required></label>
+      <label>Email<input name="email" type="email" required></label>
+      <label>Password<input name="password" type="password" minlength="8" required></label>
+      <label>Role<select name="role" required><option value="applicant">Applicant</option><option value="admin">Admin</option></select></label>
+      <button class="btn">Create Account</button>
+    </form>
+  </section>
+  <section class="card panel-card">
+    <h2>Existing Login Accounts</h2>
+    <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th></th></tr></thead><tbody>
+      <% users.forEach(u=>{ %><tr><td><%= u.name %></td><td><%= u.email %></td><td><%= u.role %></td><td><%= u.active ? 'Yes' : 'No' %></td><td><form method="post" action="/admin/users/<%= u.id %>/toggle"><button class="small"><%= u.active ? 'Deactivate' : 'Activate' %></button></form></td></tr><% }) %>
+    </tbody></table></div>
+  </section>
+</div>
+<%- include('partials_footer') %>

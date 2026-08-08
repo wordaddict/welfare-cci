@@ -1,0 +1,36 @@
+<%- include('partials_header') %>
+<%
+  const selected = typeof selectedRole !== 'undefined' ? selectedRole : '';
+%>
+<section class="auth-wrap clean-login-wrap">
+  <div class="auth-card card glass-card clean-login-card">
+    <p class="eyebrow">Secure access</p>
+    <h1>Log in</h1>
+    <p class="muted">Select your account type and sign in with your assigned email and password.</p>
+
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+
+    <form method="post" action="/login" class="form compact-form">
+      <label>Account type
+        <select name="expectedRole" required>
+          <option value="">Select account type</option>
+          <option value="applicant" <%= selected === 'applicant' ? 'selected' : '' %>>Applicant</option>
+          <option value="admin" <%= selected === 'admin' ? 'selected' : '' %>>Admin</option>
+        </select>
+      </label>
+      <label>Email
+        <input name="email" type="email" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-primary login-full-btn">Log in</button>
+    </form>
+
+    <div class="login-help-row clean-login-help">
+      <p class="muted small">First time applicant? <a href="/register">Create an account to start a financial request</a>.</p>
+      <p class="muted small">Only Applicants and Admins use password login. Reviewers, Pastors, MAP Leaders, Unit Heads, and Finance contacts use secure links sent by email.</p>
+    </div>
+  </div>
+</section>
+<%- include('partials_footer') %>

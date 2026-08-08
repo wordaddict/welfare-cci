@@ -1,0 +1,30 @@
+<%- include('partials_header') %>
+<section class="auth-wrap">
+  <div class="auth-card card glass-card">
+    <p class="eyebrow">Reviewer availability</p>
+    <h1>Confirm Review Availability</h1>
+    <p class="muted">You have been invited to complete an independent review of a confidential CCI America financial assistance request.</p>
+    <div class="info-grid compact">
+      <div><span>Case ID</span><strong><%= invite.case_id %></strong></div>
+      <div><span>Category</span><strong><%= invite.request_category %></strong></div>
+      <div><span>Urgency</span><strong><%= invite.urgency %></strong></div>
+      <div><span>Invited reviewer</span><strong><%= invite.reviewer_name %></strong></div>
+    </div>
+    <p class="fine-print">The applicant's detailed information is not shown at the invitation stage. If you accept, a separate secure review link will be emailed to you.</p>
+    <% if (invite.declined_at) { %>
+      <div class="success-panel"><h3>You declined this review invitation.</h3><p>Thank you for responding.</p></div>
+    <% } else if (invite.accepted_at) { %>
+      <div class="success-panel"><h3>You already accepted this review.</h3><p>A separate secure review link was sent to your email. If you cannot find it, please contact the CCI Welfare Admin.</p></div>
+    <% } else { %>
+      <div class="review-invite-actions">
+        <form method="post" action="/review-invite/<%= invite.invite_token %>/accept" class="stacked-form">
+          <button class="btn">Yes, I am available to review this case</button>
+        </form>
+        <form method="post" action="/review-invite/<%= invite.invite_token %>/decline" class="stacked-form">
+          <button class="btn btn-soft">No, I am not available</button>
+        </form>
+      </div>
+    <% } %>
+  </div>
+</section>
+<%- include('partials_footer') %>

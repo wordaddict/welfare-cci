@@ -1,0 +1,162 @@
+<%- include('partials_header') %>
+<%
+  const brief = (value, limit = 150) => {
+    const text = String(value || '').trim();
+    if (!text) return 'Not provided.';
+    return text.length > limit ? text.slice(0, limit - 1).trim() + '…' : text;
+  };
+  const yesNo = (value) => value || 'Pending';
+  const primaryLeader = verifications && verifications.length ? verifications[0] : null;
+  const scoreText = reviews.length ? `${reviewSummary.averageRounded}/21 (${reviewSummary.averagePercent}%)` : 'Pending';
+  const interp = reviews.length ? (reviewSummary.averageRounded >= 20 ? 'Strong support' : reviewSummary.averageRounded >= 15 ? 'Moderate support' : reviewSummary.averageRounded >= 10 ? 'Needs discussion' : 'Weak / insufficient') : 'Awaiting reviews';
+  const approvedAmount = request.amount_approved ? money(request.amount_approved) : (request.decision && request.decision.includes('Approval') ? money(request.amount_requested) : 'Pending');
+  const supportLetter = primaryLeader && primaryLeader.support_letter_file ? 'Yes' : 'No / not uploaded';
+  const evidenceCount = (docs ? docs.length : 0) + (primaryLeader && primaryLeader.support_letter_file ? 1 : 0);
+%>
+
+<section class="finance-onepage no-print-controls">
+  <a class="btn btn-danger report-print-btn" href="/requests/<%= request.id %>/report/download">Download summary PDF</a>
+  <a class="btn btn-soft report-print-btn" href="/requests/<%= request.id %>/report/package">Download finance packet with evidence</a>
+</section>
+
+<section class="finance-onepage report-sheet">
+  <header class="report-topline">
+    <div class="report-brand-left">
+      <img src="/cci-america-logo.png" alt="CCI America logo">
+      <div>
+        <span>CCI America</span>
+        <strong>Committee Approval Summary</strong>
+      </div>
+    </div>
+    <div class="report-case-meta">
+      <span>Case ID</span>
+      <strong><%= request.case_id %></strong>
+      <small>Generated <%= new Date().toLocaleDateString() %></small>
+    </div>
+  </header>
+
+  <div class="report-title-row">
+    <div>
+      <p class="eyebrow red">Confidential approval memo</p>
+      <h1><%= request.full_name %></h1>
+      <p class="report-subtitle"><%= request.request_category %> · Requested <%= money(request.amount_requested) %> · Total need <%= money(request.total_amount_needed || request.amount_requested) %></p>
+    </div>
+    <div class="report-badges">
+      <span class="mini-badge <%= request.urgency==='Emergency'?'danger':(request.urgency==='Urgent'?'warning':'') %>"><%= request.urgency %></span>
+      <span class="mini-badge"><%= request.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : (request.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : request.status) %></span>
+    </div>
+  </div>
+
+  <section class="finance-action-card">
+    <div>
+      <span>Committee decision</span>
+      <strong><%= request.decision || 'Pending final decision' %></strong>
+    </div>
+    <div>
+      <span>Approved amount</span>
+      <strong><%= approvedAmount %></strong>
+    </div>
+    <div>
+      <span>Payment route</span>
+      <strong><%= request.direct_payment_possible || 'Not provided' %></strong>
+    </div>
+    <div>
+      <span>Due date</span>
+      <strong><%= request.due_date || 'Not provided' %></strong>
+    </div>
+  </section>
+
+  <main class="report-grid-onepage">
+    <section class="report-box span-2">
+      <h2>Payment / implementation instruction</h2>
+      <p><strong>Payment details:</strong> <%= brief(request.payment_details || request.direct_payment_explanation, 190) %></p>
+      <p><strong>Decision notes:</strong> <%= brief(request.decision_notes, 220) %></p>
+    </section>
+
+    <section class="report-box">
+      <h2>Applicant snapshot</h2>
+      <dl class="mini-dl">
+        <div><dt>Email</dt><dd><%= request.email %></dd></div>
+        <div><dt>Phone</dt><dd><%= request.phone %></dd></div>
+        <div><dt>Community</dt><dd><%= request.cci_community_name %></dd></div>
+        <div><dt>CCI connection</dt><dd><%= request.connection_duration %></dd></div>
+        <div><dt>Official membership</dt><dd><%= request.membership_status === 'Yes' ? 'Official member' : 'Not yet an official member' %></dd></div>
+        <div><dt>Celeforce status</dt><dd><%= request.worker_status === 'Yes' ? `Worker · ${request.worker_duration_value || ''} ${request.worker_duration_unit || ''}` : 'Not a worker' %></dd></div>
+      </dl>
+    </section>
+
+    <section class="report-box">
+      <h2>Need and risk</h2>
+      <p><strong>Situation:</strong> <%= brief(request.situation, 120) %></p>
+      <p><strong>Risk if not supported:</strong> <%= brief(request.consequence, 120) %></p>
+      <p><strong>Applicant effort:</strong> <%= brief(request.applicant_effort, 100) %></p>
+    </section>
+
+    <section class="report-box">
+      <h2>Pastoral verification</h2>
+      <dl class="mini-dl">
+        <div><dt>Pastor</dt><dd><%= request.leader_name %></dd></div>
+        <div><dt>Official membership confirmed</dt><dd><%= primaryLeader ? (primaryLeader.member_confirmed || 'Not recorded') : 'Pending' %></dd></div>
+        <div><dt>Current CCI participation confirmed</dt><dd><%= primaryLeader ? (primaryLeader.active_connection || 'Not recorded') : 'Pending' %></dd></div>
+        <div><dt>Celeforce status confirmed</dt><dd><%= primaryLeader ? (primaryLeader.worker_confirmed || 'Not recorded') : 'Pending' %></dd></div>
+        <div><dt>Pastor has known applicant for</dt><dd><%= primaryLeader && primaryLeader.known_duration_value ? `${primaryLeader.known_duration_value} ${primaryLeader.known_duration_unit || ''}` : 'Pending' %></dd></div>
+        <div><dt>Support letter</dt><dd><%= supportLetter %></dd></div>
+      </dl>
+      <p><strong>Pastor comments:</strong> <%= primaryLeader ? brief(primaryLeader.decision_comments || primaryLeader.pastoral_context, 95) : 'No pastoral response has been submitted.' %></p>
+    </section>
+
+    <section class="report-box">
+      <h2>Review outcome</h2>
+      <div class="score-strip">
+        <strong><%= scoreText %></strong>
+        <span><%= interp %></span>
+      </div>
+      <p><strong>Urgency reason:</strong> <%= brief(request.urgency_reason, 95) %></p>
+      <p><strong>Reviews received:</strong> <%= reviews.length %> of <%= assignedReviewers.length %> assigned</p>
+    </section>
+
+    <section class="report-box span-2 evidence-summary-box">
+      <h2>Evidence included for finance submission</h2>
+      <% if (evidenceCount === 0) { %>
+        <p>No applicant evidence or pastoral support letter has been uploaded.</p>
+      <% } else { %>
+        <ul class="compact-evidence-list">
+          <% (docs || []).forEach(d => { %>
+            <li><strong><%= d.document_type || 'Applicant evidence' %>:</strong> <a href="/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a></li>
+          <% }) %>
+          <% if (primaryLeader && primaryLeader.support_letter_file) { %>
+            <li><strong>Pastoral support letter:</strong> <a href="/uploads/<%= primaryLeader.support_letter_file %>" target="_blank">View uploaded pastoral support letter</a></li>
+          <% } %>
+        </ul>
+      <% } %>
+    </section>
+
+    <section class="report-box span-2 reviewer-summary-box">
+      <h2>Reviewer recommendation summary</h2>
+      <table class="onepage-table">
+        <thead><tr><th>Reviewer</th><th>Score</th><th>Recommendation</th><th>Amount</th><th>Key note</th></tr></thead>
+        <tbody>
+          <% if (!reviews.length) { %>
+            <tr><td colspan="5">No reviewer assessments submitted yet.</td></tr>
+          <% } %>
+          <% reviews.slice(0,4).forEach(r=>{ %>
+            <tr>
+              <td><%= r.reviewer_name %></td>
+              <td><%= r.score_total || 0 %>/21</td>
+              <td><%= r.recommended_decision %></td>
+              <td><%= money(r.recommended_amount) %></td>
+              <td><%= brief(r.notes, 55) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="report-footer-line">
+    <div><strong>Confidential:</strong> For authorized CCI America committee use only. · © 2026 CCI America.</div>
+    <div class="tmak-credit"><span>Developed by TMAK Consultancy</span><img src="/tmak-logo.jpg" alt="TMAK Consultancy logo"></div>
+  </footer>
+</section>
+
+<%- include('partials_footer') %>

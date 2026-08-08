@@ -1,0 +1,6 @@
+<%- include('partials_header') %>
+<div class="page-heading"><p class="eyebrow">Staff workspace</p><h1 class="section-title">Financial Assistance Dashboard</h1></div>
+<div class="grid"><div class="card"><h3>Total Requests</h3><p class="big"><%= totals.total || 0 %></p></div><div class="card"><h3>Total Requested</h3><p class="big"><%= money(totals.requested || 0) %></p></div><div class="card"><h3>Total Approved</h3><p class="big"><%= money(totals.approved || 0) %></p></div></div>
+<div class="card"><h2>Status Summary</h2><div class="chips"><% stats.forEach(s=>{ %><span><%= s.status %>: <b><%= s.count %></b></span><% }) %></div></div>
+<div class="card"><h2>Recent Requests</h2><table><thead><tr><th>Case ID</th><th>Name</th><th>Category</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody><% recent.forEach(r=>{ %><tr><td><%= r.case_id %></td><td><%= r.full_name %></td><td><%= r.request_category %></td><td><%= money(r.amount_requested) %></td><td><span class="tag"><%= r.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : (r.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : r.status) %></span></td><td><a href="/requests/<%= r.id %>">Open</a></td></tr><% }) %></tbody></table></div>
+<%- include('partials_footer') %>

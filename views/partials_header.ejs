@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= title %> | CCI America Financial Assistance</title>
+  <link rel="stylesheet" href="/style.css?v=cci-red-22">
+</head>
+<body>
+<% const isPublicPage = typeof publicPage !== "undefined" && publicPage; %>
+<% const isLandingPage = typeof landingPage !== "undefined" && landingPage; %>
+<header class="topbar <%= (isPublicPage || isLandingPage) ? 'public-topbar' : '' %>">
+  <a class="brand" href="/" aria-label="CCI America Financial Assistance home">
+    <img src="/cci-america-logo.png" alt="CCI America logo" class="brand-logo">
+    <span class="brand-text">
+      <strong>CCI America</strong>
+      <small>Financial Assistance</small>
+    </span>
+  </a>
+  <nav class="navlinks">
+    <% if (isLandingPage) { %>
+      <!-- Landing page intentionally keeps navigation minimal. Use the hero buttons to start or log in. -->
+    <% } else if (isPublicPage) { %>
+      <span class="secure-pill"><%= typeof publicLabel !== "undefined" ? publicLabel : "Secure verification" %></span>
+    <% } else { %>
+      <% if (user) { %>
+        <% if (user.role === 'applicant') { %>
+          <a href="/apply">Apply</a>
+          <a href="/track">Track Request</a>
+        <% } %>
+        <% if (user.role === 'admin') { %>
+          <a href="/dashboard">Dashboard</a>
+          <a href="/requests">Requests</a>
+          <a href="/reports">Reports</a>
+          <a href="/admin/reviewers">Reviewers</a>
+          <a href="/admin/users">Accounts</a>
+        <% } %>
+        <form method="post" action="/logout" class="inline"><button class="btn btn-soft">Logout</button></form>
+      <% } else { %>
+        <a href="/apply">Apply</a>
+        <a href="/track">Track Request</a>
+        <a href="/register">Create Account</a>
+        <a href="/login" class="btn btn-soft">Login</a>
+      <% } %>
+    <% } %>
+  </nav>
+</header>
+<main class="container">

@@ -1,0 +1,64 @@
+<%- include('partials_header') %>
+<section class="verification-shell">
+  <div class="card panel-card verification-card">
+    <p class="eyebrow">Leadership verification</p>
+    <h1>Celeforce Leadership Verification</h1>
+    <p><b><%= request.full_name %></b> identified you as their Unit Head for request <b><%= request.case_id %></b>.</p>
+    <p class="muted">Please confirm the applicant's Celeforce service and unit connection. This leadership verification must be completed before the request proceeds to pastoral verification.</p>
+
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+
+    <section class="pastor-application-snapshot">
+      <h2>Applicant Information Relevant to Leadership Verification</h2>
+      <div class="info-grid compact">
+        <div><span>Applicant's name</span><strong><%= request.full_name %></strong></div>
+        <div><span>CCI community</span><strong><%= request.cci_connection_type %> · <%= request.cci_community_name %></strong></div>
+        <div><span>Celeforce worker status reported by the applicant</span><strong><%= request.worker_status === 'Yes' ? 'Celeforce worker' : 'Not a Celeforce worker' %></strong></div>
+        <div><span>Length of Celeforce service reported by the applicant</span><strong><%= request.worker_duration_value ? `${request.worker_duration_value} ${request.worker_duration_unit || ''}` : 'Not provided' %></strong></div>
+        <div><span>Unit reported by the applicant</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
+        <div><span>Type of assistance requested</span><strong><%= request.request_category %></strong></div>
+        <div><span>Total amount needed</span><strong>$<%= Number(request.total_amount_needed || request.amount_requested || 0).toFixed(2) %></strong></div>
+        <div><span>Payment due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+      </div>
+      <div class="leader-text-block"><span>Applicant's description of the current situation</span><p><%= request.situation %></p></div>
+      <p class="fine-print">This page shows only the information needed for leadership verification. The request will proceed to the applicant's Pastor after this step is completed.</p>
+    </section>
+
+    <form method="post" action="/leadership-verify/<%= token %>" class="stacked-form">
+      <h2>Unit Head Verification</h2>
+      <div class="two">
+        <label>Your name *<input name="verifier_name" value="<%= request.unit_leader_name || '' %>" required></label>
+        <label>Your email address *<input name="verifier_email" type="email" value="<%= request.unit_leader_email || '' %>" required></label>
+      </div>
+      <label>Your phone number *<input name="verifier_phone" value="<%= request.unit_leader_phone || '' %>" required></label>
+
+      <div class="two">
+        <label>Do you confirm that this applicant is currently a worker (Celeforce)? *
+          <select name="worker_confirmed" required><option value="">Select</option><option>Yes</option><option>No</option></select>
+        </label>
+        <label>Do you confirm that this applicant serves in the <%= request.unit_name || 'stated' %> unit? *
+          <select name="unit_confirmed" required><option value="">Select</option><option>Yes</option><option>No</option></select>
+        </label>
+      </div>
+
+      <label>How long has this applicant served in this unit? *</label>
+      <div class="two">
+        <label>Number *
+          <select name="service_duration_value" required>
+            <option value="">Select</option>
+            <% for (let i = 1; i <= 60; i++) { %><option value="<%= i %>"><%= i %></option><% } %>
+          </select>
+        </label>
+        <label>Months / Years *
+          <select name="service_duration_unit" required><option value="">Select</option><option>Months</option><option>Years</option></select>
+        </label>
+      </div>
+
+      <label>Please provide any comments or information that may help verify the applicant's Celeforce service. *
+        <textarea name="comments" required placeholder="If there is nothing additional to add, please enter 'No additional comments.'"></textarea>
+      </label>
+      <button class="btn">Submit Leadership Verification</button>
+    </form>
+  </div>
+</section>
+<%- include('partials_footer') %>

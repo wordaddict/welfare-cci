@@ -1,0 +1,461 @@
+<%- include('partials_header') %>
+
+<section class="case-hero">
+  <div>
+    <p class="eyebrow">Case file</p>
+    <h1><%= request.case_id %></h1>
+    <p><%= request.full_name %> · <%= request.request_category %> · <%= money(request.amount_requested) %></p>
+  </div>
+  <div class="case-status-panel">
+    <span class="tag <%= request.urgency==='Emergency'?'danger':(request.urgency==='Urgent'?'warning':'') %>"><%= request.urgency %></span>
+    <strong><%= request.status === 'Awaiting Leadership Verification' ? 'Awaiting Leadership Verification' : request.status === 'Awaiting Pastoral Verification' || request.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : request.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : request.status %></strong>
+    <small>Submitted <%= request.created_at %></small>
+    <a class="btn btn-soft" href="/requests/<%= request.id %>/report">Generate Report</a>
+          <a class="btn btn-soft" href="/requests/<%= request.id %>/report/download">Download Report PDF</a>
+  </div>
+</section>
+
+<section class="card panel-card urgency-triage-card">
+  <div class="section-title-row">
+    <div>
+      <p class="eyebrow dark">System triage</p>
+      <h2>Urgency Classification</h2>
+    </div>
+    <span class="status-pill <%= request.urgency === 'Emergency' ? 'warning' : request.urgency === 'Urgent' ? 'warning' : 'success' %>"><%= request.urgency %></span>
+  </div>
+  <p class="muted">The app assigns an urgency level from the applicant’s answers. Admin/committee can override it after reviewing the evidence.</p>
+  <div class="subtle-note"><b>Reason:</b> <%= request.urgency_reason || 'No urgency reason recorded.' %></div>
+  <% if (request.urgency_override_at) { %>
+    <p class="fine-print">Last manually updated on <%= request.urgency_override_at %>.</p>
+  <% } %>
+  <form method="post" action="/requests/<%= request.id %>/urgency" class="stacked-form urgency-form">
+    <div class="two">
+      <label>Admin urgency level
+        <select name="urgency">
+          <% ['Emergency','Urgent','Standard'].forEach(x=>{ %>
+            <option value="<%= x %>" <%= request.urgency===x?'selected':'' %>><%= x %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Recommended timeline
+        <input readonly value="<%= request.urgency === 'Emergency' ? '24–72 hours' : request.urgency === 'Urgent' ? '4–14 days' : 'Standard committee timeline' %>">
+      </label>
+    </div>
+    <label>Reason / override note
+      <textarea name="urgency_reason"><%= request.urgency_reason || '' %></textarea>
+    </label>
+    <button class="btn btn-soft">Save Urgency Classification</button>
+  </form>
+</section>
+
+<div class="case-grid">
+  <section class="card panel-card">
+    <h2>Applicant & Request</h2>
+    <div class="info-grid">
+      <div><span>Name</span><strong><%= request.full_name %></strong></div>
+      <div><span>Email</span><strong><%= request.email %></strong></div>
+      <div><span>Phone</span><strong><%= request.phone %></strong></div>
+      <div><span>Location</span><strong><%= request.city_state %></strong></div>
+      <div><span>CCI community</span><strong><%= request.cci_connection_type %> · <%= request.cci_community_name %></strong></div>
+      <div><span>Length of connection with CCI</span><strong><%= request.connection_duration %></strong></div>
+      <div><span>Official CCI membership</span><strong><%= request.membership_status === 'Yes' ? 'Official member' : 'Not yet an official member' %></strong></div>
+      <div><span>MAP group participation</span><strong><%= request.membership_status === 'No' ? (request.map_group_status === 'Yes' ? `Yes${request.map_group_name ? ` · ${request.map_group_name}` : ''}` : 'No MAP group reported') : 'Not applicable' %></strong></div>
+      <div><span>Celeforce worker status</span><strong><%= request.worker_status === 'Yes' ? 'Celeforce worker' : 'Not a Celeforce worker' %></strong></div>
+      <div><span>Length of Celeforce service</span><strong><%= request.worker_status === 'Yes' ? `${request.worker_duration_value || ''} ${request.worker_duration_unit || ''}` : 'Not applicable' %></strong></div>
+      <% if (request.worker_status === 'Yes') { %><div><span>Unit</span><strong><%= request.unit_name || 'Not provided' %></strong></div><% } %>
+      <div><span>Pastor notification</span><strong><%= request.pastor_informed === 'Yes' ? 'Applicant confirmed Pastor was informed' : 'Not confirmed' %></strong></div>
+      <div><span>Amount requested</span><strong><%= money(request.amount_requested) %></strong></div>
+      <div><span>Total need</span><strong><%= money(request.total_amount_needed) %></strong></div>
+      <div><span>Due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+    </div>
+    <h3>Situation</h3>
+    <p><%= request.situation %></p>
+    <h3>Consequence if support is not provided</h3>
+    <p><%= request.consequence %></p>
+    <h3>Applicant effort / other help sought</h3>
+    <p><%= request.applicant_effort || 'Not provided.' %></p>
+    <p><b>One-time/Ongoing:</b> <%= request.one_time_or_ongoing %></p>
+    <p><b>Prior CCI America assistance:</b> <%= request.prior_assistance %> <%= request.prior_assistance_details || '' %></p>
+
+    <h3>Category Details</h3>
+    <%
+      const categoryLabels = {
+        rent_due: 'Rent due', eviction_risk: 'Eviction or housing-loss risk', utility_type: 'Utility type', disconnection_notice: 'Disconnection notice',
+        household_size: 'Household size', food_urgent: 'Urgent food need',
+        medical_type: 'Medical need type', medical_urgent: 'Urgent medical need',
+        school_name: 'School/institution', education_purpose: 'Related to enrollment, graduation, or employment improvement',
+        current_accommodation: 'Current accommodation', accommodation_timeline: 'Accommodation timeline', safety_concern: 'Safety concern',
+        event_name: 'CCI event', event_support_type: 'Event support requested', event_support_details: 'Event support details',
+        other_description: 'Other need description', other_urgency: 'Why this is urgent or important', category: 'Category'
+      };
+      const visibleCategoryDetails = Object.entries(categoryDetails || {}).filter(([key, value]) => value && String(value).trim() !== '');
+    %>
+    <% if (visibleCategoryDetails.length === 0) { %>
+      <p class="muted">No additional category-specific details were provided.</p>
+    <% } else { %>
+      <dl class="detail-list">
+        <% visibleCategoryDetails.forEach(([key, value]) => { %>
+          <div><dt><%= categoryLabels[key] || key %></dt><dd><%= value %></dd></div>
+        <% }) %>
+      </dl>
+    <% } %>
+
+    <h3>Payment</h3>
+    <p><b>Can CCI pay vendor/service provider directly?</b> <%= request.direct_payment_possible %></p>
+    <% if (request.direct_payment_possible === 'Yes') { %>
+      <p><b>Vendor/service-provider payment details:</b> <%= request.payment_details || 'Not provided yet.' %></p>
+    <% } else { %>
+      <p><b>Reason direct vendor payment is not possible:</b> <%= request.direct_payment_explanation || 'Not provided yet.' %></p>
+      <div class="info-grid compact">
+        <div><span>Zelle name</span><strong><%= request.zelle_name || 'Not provided' %></strong></div>
+        <div><span>Zelle email</span><strong class="wrap-text"><%= request.zelle_email || 'Not provided' %></strong></div>
+        <div><span>Zelle phone</span><strong><%= request.zelle_phone || 'Not provided' %></strong></div>
+      </div>
+    <% } %>
+  </section>
+
+  <aside class="card panel-card sticky-card">
+    <h2>Case Control</h2>
+    <form method="post" action="/requests/<%= request.id %>/status" class="stacked-form">
+      <label>Update status
+        <select name="status">
+          <% [
+            ['New Request','New Request'],
+            ['Intake Review','Intake Review'],
+            ['Missing Information','Missing Information'],
+            ['Awaiting Leadership Verification','Awaiting Leadership Verification'],
+            ['Leadership Verification Complete','Leadership Verification Complete'],
+            ['Awaiting Pastoral Verification','Awaiting Pastoral Verification'],
+            ['Pastoral Verification Complete','Pastoral Verification Complete'],
+            ['Awaiting Leader Verification','Pastoral Verification (legacy)'],
+            ['Leader Verification Complete','Pastoral Verification Complete (legacy)'],
+            ['Assigned to Reviewers','Assigned to Reviewers'],
+            ['Committee Review','Committee Review'],
+            ['Decision Made','Decision Made'],
+            ['Escalated to Pastorate','Escalated to Pastorate'],
+            ['Follow-Up Needed','Follow-Up Needed'],
+            ['Closed','Closed']
+          ].forEach(([value,label])=>{ %>
+            <option value="<%= value %>" <%= request.status===value?'selected':'' %>><%= label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="btn">Save Status</button>
+    </form>
+
+    <hr>
+    <h3>Reviewer Assignment</h3>
+    <p class="muted">Choose reviewers from the Admin-managed Reviewer Directory. Reviewers do not log in. They first receive an invitation link. After accepting, the system emails a second secure link for the actual confidential review.</p>
+
+    <% if (assignedReviewers && assignedReviewers.length) { %>
+      <div class="assigned-reviewer-list">
+        <h4>Reviewer invitation status</h4>
+        <% assignedReviewers.forEach(ar => { %>
+          <div class="assigned-reviewer-row">
+            <div><strong><%= ar.name %></strong><span><%= ar.email %></span></div>
+            <small class="<%= ar.review_submitted_at ? 'accepted' : (ar.accepted_at ? 'accepted' : (ar.declined_at ? 'declined' : (ar.expired_at ? 'expired' : ''))) %>"><%= ar.review_submitted_at ? 'Review submitted' : (ar.accepted_at ? (ar.review_token_sent_at ? 'Accepted · review link sent' : 'Accepted') : (ar.declined_at ? 'Declined' : (ar.expired_at ? 'Expired' : (ar.reminder_sent_at ? 'Invitation reminder sent' : (ar.notified_at ? 'Invitation sent' : 'Assigned · waiting to send'))))) %></small>
+          </div>
+          <div class="inline-actions">
+            <% if (!ar.review_submitted_at) { %>
+              <form method="post" action="/requests/<%= request.id %>/reviewers/<%= ar.id %>/resend" class="inline"><button class="small">Resend <%= ar.accepted_at ? 'Review Link' : 'Invitation' %></button></form>
+              <form method="post" action="/requests/<%= request.id %>/reviewers/<%= ar.id %>/remove" class="inline"><button class="small">Remove</button></form>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="empty-state"><b>No reviewers assigned yet.</b><p>Select a reviewer below. You can assign reviewers before verification is complete; invitations will be sent when pastoral verification is complete.</p></div>
+    <% } %>
+
+    <form method="post" action="/requests/<%= request.id %>/assign-reviewer" class="stacked-form">
+      <label>Assign reviewer
+        <select name="reviewer_id" required>
+          <option value="">Select an active reviewer</option>
+          <% (users || []).forEach(u => { %><option value="<%= u.id %>"><%= u.name %> · <%= u.email %></option><% }) %>
+        </select>
+      </label>
+      <button class="btn">Assign Reviewer</button>
+      <p class="fine-print">Need someone new? Add them first in <a href="/admin/reviewers">Reviewer Directory</a>.</p>
+    </form>
+
+  </aside>
+</div>
+
+<div class="two case-section">
+  <% if (request.worker_status === 'Yes') { %>
+  <section class="card panel-card leadership-panel">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Leadership verification</p>
+        <h2>Unit Head Verification</h2>
+      </div>
+      <span class="status-pill <%= request.unit_leader_verified === 'Complete' ? 'success' : 'warning' %>"><%= request.unit_leader_verified || 'Pending' %></span>
+    </div>
+    <h3 class="mini-heading">Unit Head identified by applicant</h3>
+    <div class="info-grid compact leader-contact-grid">
+      <div><span>Unit</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
+      <div><span>Unit Head</span><strong><%= request.unit_leader_name || 'Not provided' %></strong></div>
+      <div><span>Email</span><strong class="wrap-text"><%= request.unit_leader_email || 'Not provided' %></strong></div>
+      <div><span>Phone</span><strong><%= request.unit_leader_phone || 'Not provided' %></strong></div>
+    </div>
+    <% if (request.unit_leader_verification_token && (!leadershipVerifications || !leadershipVerifications.length)) { %>
+      <div class="subtle-note"><b>Local test link:</b> <a href="/leadership-verify/<%= request.unit_leader_verification_token %>" target="_blank">Open leadership verification form</a></div>
+    <% } %>
+    <% if (!leadershipVerifications || !leadershipVerifications.length) { %>
+      <div class="empty-state"><b>No leadership response yet.</b><p>The Unit Head must complete this verification before pastoral verification begins.</p></div>
+    <% } %>
+    <% (leadershipVerifications || []).forEach(v => { %>
+      <div class="leader-response-card">
+        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= v.created_at %></small></div>
+        <div class="info-grid compact leader-contact-grid">
+          <div><span>Confirmed Celeforce worker status</span><strong><%= v.worker_confirmed %></strong></div>
+          <div><span>Confirmed service in stated unit</span><strong><%= v.unit_confirmed %></strong></div>
+          <div><span>Verified length of service in unit</span><strong><%= v.service_duration_value %> <%= v.service_duration_unit %></strong></div>
+          <div><span>Unit verified</span><strong><%= v.unit_name || request.unit_name %></strong></div>
+        </div>
+        <% if (v.worker_confirmed !== request.worker_status || v.unit_confirmed !== 'Yes') { %>
+          <div class="alert"><b>Verification mismatch:</b> The Unit Head's verification does not fully match the applicant's Celeforce or unit information.</div>
+        <% } %>
+        <div class="leader-text-block"><span>Unit Head's comments</span><p><%= v.comments %></p></div>
+      </div>
+    <% }) %>
+  </section>
+  <% } %>
+
+  <section class="card panel-card leadership-panel">
+    <div class="section-title-row">
+      <div>
+        <p class="eyebrow dark">Pastoral verification</p>
+        <h2>Pastoral Verification</h2>
+      </div>
+      <span class="status-pill <%= request.leader_verified === 'Complete' || request.leader_verified === 'Yes' ? 'success' : request.leader_verified === 'Pending' ? '' : 'warning' %>"><%= request.leader_verified %></span>
+    </div>
+
+    <h3 class="mini-heading">Pastor identified by applicant</h3>
+    <div class="info-grid compact leader-contact-grid">
+      <div><span>Name</span><strong><%= request.leader_name %></strong></div>
+      <div><span>Role</span><strong>Pastor</strong></div>
+      <div><span>Email</span><strong class="wrap-text"><%= request.leader_email || 'Not provided' %></strong></div>
+      <div><span>Phone</span><strong><%= request.leader_phone || 'Not provided' %></strong></div>
+    </div>
+
+    <% if (request.leader_verification_token && !verifications.length && (request.worker_status !== 'Yes' || request.unit_leader_verified === 'Complete')) { %>
+      <div class="subtle-note"><b>Local test link:</b> <a href="/pastor-verify/<%= request.leader_verification_token %>" target="_blank">Open pastoral verification form</a></div>
+    <% } %>
+
+    <% if (!verifications.length) { %>
+      <div class="empty-state">
+        <b>No pastoral response yet.</b>
+        <p>The Pastor's submitted answers will appear here for admins, committee members, and reviewers once the pastoral verification form is completed.</p>
+      </div>
+    <% } %>
+
+    <% verifications.forEach(v=>{ %>
+      <div class="leader-response-card">
+        <div class="leader-response-header">
+          <div>
+            <span>Submitted by Pastor</span>
+            <strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong>
+          </div>
+          <small><%= v.created_at %></small>
+        </div>
+
+        <div class="info-grid compact leader-contact-grid">
+          <div><span>Pastor name</span><strong><%= v.verifier_name || request.leader_name || 'Not provided' %></strong></div>
+          <div><span>Pastor email</span><strong class="wrap-text"><%= v.verifier_email || request.leader_email || 'Not provided' %></strong></div>
+          <div><span>Pastor phone</span><strong><%= v.verifier_phone || request.leader_phone || 'Not provided' %></strong></div>
+          <div><span>Current CCI participation confirmed by Pastor</span><strong><%= v.active_connection || 'Not recorded' %></strong></div>
+          <div><span>Official CCI membership confirmed by Pastor</span><strong><%= v.member_confirmed || 'Not recorded' %></strong></div>
+          <div><span>Celeforce worker status confirmed by Pastor</span><strong><%= v.worker_confirmed || 'Not recorded' %></strong></div>
+          <div><span>Length of time Pastor has known applicant</span><strong><%= v.known_duration_value ? `${v.known_duration_value} ${v.known_duration_unit || ''}` : 'Not recorded' %></strong></div>
+        </div>
+
+        <% if ((v.member_confirmed && v.member_confirmed !== request.membership_status) || (v.worker_confirmed && v.worker_confirmed !== (request.worker_status || 'No'))) { %>
+          <div class="alert"><b>Verification mismatch:</b> The Pastor's membership and/or worker verification does not match the applicant's answer. Please review before deciding this case.</div>
+        <% } %>
+
+        <div class="leader-text-block">
+          <span>Pastor's comments / information for decision</span>
+          <p><%= v.decision_comments || v.pastoral_context || 'No comments recorded.' %></p>
+        </div>
+
+        <% if (v.support_letter_file) { %>
+          <a class="btn btn-soft" href="/uploads/<%= v.support_letter_file %>" target="_blank">View additional pastoral support letter</a>
+        <% } %>
+      </div>
+    <% }) %>
+  </section>
+
+  <section class="card panel-card">
+    <h2>Documents</h2>
+    <% if (!docs.length) { %><p class="muted">No documents uploaded.</p><% } else { %>
+      <ul class="doc-list"><% docs.forEach(d=>{ %><li><a href="/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a><span><%= d.document_type || 'Supporting document' %> · <%= Math.round(d.size_bytes/1024) %> KB</span></li><% }) %></ul>
+    <% } %>
+  </section>
+</div>
+
+<section class="card panel-card">
+  <div class="section-title-row">
+    <div>
+      <p class="eyebrow dark">Admin only</p>
+      <h2>Reviewer Assessments</h2>
+    </div>
+    <a class="btn btn-soft" href="/requests/<%= request.id %>/report">Generate Report</a>
+          <a class="btn btn-soft" href="/requests/<%= request.id %>/report/download">Download Report PDF</a>
+  </div>
+  <p class="muted">Only Admin can see all reviewer assessments. Reviewers see only the single case assigned to their secure review link and cannot see one another’s reviews.</p>
+  <% if (reviews.length) { %>
+    <div class="info-grid compact score-summary-grid">
+      <div><span>Reviews received</span><strong><%= reviews.length %></strong></div>
+      <div><span>Average score</span><strong><%= reviewSummary.averageRounded %>/21</strong></div>
+      <div><span>Average percent</span><strong><%= reviewSummary.averagePercent %>%</strong></div>
+    </div>
+  <% } %>
+  <% if (!reviews.length) { %><p class="muted">No reviewer assessments have been saved yet.</p><% } %>
+  <% reviews.forEach(r=>{ %>
+    <div class="review-report-card">
+      <div class="leader-response-header">
+        <div><span>Reviewer</span><strong><%= r.reviewer_name %></strong></div>
+        <small><%= r.updated_at || r.created_at %></small>
+      </div>
+      <div class="info-grid compact">
+        <div><span>Decision</span><strong><%= r.recommended_decision %></strong></div>
+        <div><span>Recommended amount</span><strong><%= money(r.recommended_amount) %></strong></div>
+        <div><span>Calculated financial gap</span><strong><%= money(r.actual_gap) %></strong></div>
+        <div><span>System preliminary score</span><strong><%= r.system_score_total || 'N/A' %>/21</strong></div>
+        <div><span>Reviewer agreement with system</span><strong><%= r.system_assessment_agreement || 'Not recorded' %></strong></div>
+        <div><span>Conflict</span><strong><%= r.conflict_of_interest %></strong></div>
+        <div><span>Total score</span><strong><%= r.score_total || 0 %>/21</strong></div>
+      </div>
+      <% if (r.override_reason) { %><p><b>Reason for system-score changes/disagreement:</b> <%= r.override_reason %></p><% } %>
+      <p><b>Reviewer notes:</b> <%= r.notes || 'No notes provided.' %></p>
+    </div>
+  <% }) %>
+</section>
+
+<section class="card panel-card final-decision-card">
+  <h2>Final Committee Decision</h2>
+  <% if (request.decision) { %>
+    <div class="success-panel decision-recorded-panel">
+      <h3>Final decision recorded</h3>
+      <p>The final committee decision has been recorded and the official finance packet email has been sent to the CCI USA Finance Team.</p>
+    </div>
+    <div class="info-grid compact">
+      <div><span>Decision</span><strong><%= request.decision %></strong></div>
+      <div><span>Amount approved</span><strong><%= request.amount_approved ? money(request.amount_approved) : 'Pending / N/A' %></strong></div>
+      <div><span>Documents complete?</span><strong><%= request.documents_complete || 'Pending' %></strong></div>
+      <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || 'Queued / previewed locally' %></strong></div>
+    </div>
+    <% if (request.decision_notes) { %>
+      <div class="leader-text-block"><span>Decision notes</span><p><%= request.decision_notes %></p></div>
+    <% } %>
+  <% } else { %>
+    <form method="post" action="/requests/<%= request.id %>/decision" class="stacked-form">
+      <div class="two"><label>Decision<select name="decision" required><option></option><option>Full Approval</option><option>Partial Approval</option><option>Conditional Approval</option><option>Deferred</option><option>Denied</option><option>Escalated to Pastorate</option></select></label><label>Amount approved<input name="amount_approved" type="number" step="0.01" value="<%= request.amount_approved || '' %>"></label></div>
+      <div class="three"><label>Pastorate required?<select name="pastorate_required"><option>No</option><option>Yes</option></select></label><label>Pastorate decision<input name="pastorate_decision" value="<%= request.pastorate_decision || '' %>"></label><label>Documents complete?<select name="documents_complete"><option>Pending</option><option>Yes</option><option>No</option><option>Partial</option></select></label></div>
+      <label>Decision notes<textarea name="decision_notes"><%= request.decision_notes || '' %></textarea></label>
+      <button class="btn">Record Final Decision</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="card panel-card finance-confirmation-card">
+  <div class="section-title-row">
+    <div>
+      <p class="eyebrow dark">Finance handoff</p>
+      <h2>Finance Packet & Payment Confirmation</h2>
+    </div>
+    <% if (request.finance_packet_sent_at) { %>
+      <span class="status-pill success">Packet emailed</span>
+    <% } else { %>
+      <span class="status-pill warning">Not yet emailed</span>
+    <% } %>
+  </div>
+
+  <p class="muted">After the final committee decision is recorded, the app emails the finance packet and evidence to the CCI USA Finance Team. If the request is approved, finance uses the secure confirmation link to confirm payment.</p>
+
+  <div class="info-grid compact">
+    <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || 'Not sent yet' %></strong></div>
+    <div><span>Payment confirmed</span><strong><%= request.payment_confirmed_at || 'Pending' %></strong></div>
+    <div><span>Amount paid</span><strong><%= request.payment_confirmation_amount ? money(request.payment_confirmation_amount) : 'Pending' %></strong></div>
+    <div><span>Payment method</span><strong><%= request.payment_confirmation_method || 'Pending' %></strong></div>
+    <div><span>Payment reference</span><strong><%= request.payment_confirmation_reference || 'Pending' %></strong></div>
+    <div><span>Applicant payment notice</span><strong><%= request.applicant_outcome_notified_at || 'No' %></strong></div>
+  </div>
+
+  <% if (request.payment_confirmation_notes) { %>
+    <div class="leader-text-block"><span>Finance notes</span><p><%= request.payment_confirmation_notes %></p></div>
+  <% } %>
+  <% if (request.payment_confirmation_file) { %>
+    <p><a class="btn btn-soft" href="/uploads/<%= request.payment_confirmation_file %>" target="_blank">View finance payment confirmation</a></p>
+  <% } %>
+
+  <% if (request.decision && request.decision !== 'Escalated to Pastorate' && !request.applicant_outcome_notified_at) { %>
+    <% if ((request.decision === 'Full Approval' || request.decision === 'Partial Approval' || request.decision === 'Conditional Approval') && !request.payment_confirmed_at) { %>
+      <div class="empty-state"><b>Waiting for finance payment confirmation.</b><p>Once Finance confirms payment, Admin is notified and the applicant automatically receives an approval/support email. The close-out request is normally sent after 3 days, or Admin can send it immediately.</p></div>
+    <% } else { %>
+      <form method="post" action="/requests/<%= request.id %>/notify-applicant-outcome" class="stacked-form">
+        <button class="btn"><%= (request.decision === 'Full Approval' || request.decision === 'Partial Approval' || request.decision === 'Conditional Approval') ? 'Notify Applicant of Support Processed' : 'Notify Applicant of Decision' %></button>
+        <p class="fine-print">This sends an applicant-facing email. For approvals, the close-out form will be requested later by the system for record-keeping.</p>
+      </form>
+    <% } %>
+  <% } %>
+</section>
+
+
+<section class="card panel-card followup-closure-card">
+  <h2>Follow-Up Closure</h2>
+  <% if (request.status === 'Closed') { %>
+    <div class="success-panel followup-complete-panel">
+      <h3>Follow-up completed and case closed</h3>
+      <p>Thank you for handling this request. The case is now closed, the applicant tracker has been updated, and participating reviewers have been thanked for their service.</p>
+    </div>
+  <% } else if (!applicantFollowup) { %>
+    <% if (request.payment_confirmed_at && !request.applicant_followup_requested_at) { %>
+      <div class="success-panel">
+        <h3>Finance has confirmed payment</h3>
+        <p>Admin has been notified and the applicant has received the approval/support email. The system will automatically send the close-out form after 3 days.</p>
+      </div>
+      <form method="post" action="/requests/<%= request.id %>/send-closeout-now" class="stacked-form">
+        <button class="btn">Send Follow-Up Closure Now</button>
+        <p class="fine-print">Use this to bypass the normal 3-day waiting period and send the applicant's close-out form immediately.</p>
+      </form>
+    <% } else if (request.applicant_followup_requested_at) { %>
+      <div class="empty-state">
+        <b>Close-out form sent to applicant.</b>
+        <p>The request was sent on <%= request.applicant_followup_requested_at %>. Waiting for the applicant to complete the form and upload their receipt or payment evidence.</p>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <b>Waiting for finance payment confirmation.</b>
+        <p>The close-out process begins only after Finance confirms that the approved support has been paid.</p>
+      </div>
+    <% } %>
+  <% } else { %>
+    <div class="subtle-note"><b>Applicant close-out submitted:</b> <%= applicantFollowup.created_at %></div>
+    <div class="info-grid compact">
+      <div><span>Funds used as intended?</span><strong><%= applicantFollowup.funds_used_as_intended %></strong></div>
+      <div><span>Issue resolved?</span><strong><%= applicantFollowup.issue_resolved %></strong></div>
+      <div><span>Receipt received?</span><strong><%= applicantFollowup.receipt_received %></strong></div>
+    </div>
+    <% if (applicantFollowup.receipt_file) { %>
+      <p><a class="btn btn-soft" href="/uploads/<%= applicantFollowup.receipt_file %>" target="_blank">View applicant receipt / close-out evidence</a></p>
+    <% } %>
+    <p><b>Applicant note:</b> <%= applicantFollowup.notes || 'No note provided.' %></p>
+    <form method="post" action="/requests/<%= request.id %>/followup" class="stacked-form">
+      <input type="hidden" name="funds_used_as_intended" value="<%= applicantFollowup.funds_used_as_intended %>">
+      <input type="hidden" name="issue_resolved" value="<%= applicantFollowup.issue_resolved %>">
+      <input type="hidden" name="receipt_received" value="<%= applicantFollowup.receipt_received %>">
+      <label>Pastoral follow-up needed?<select name="pastoral_followup_needed"><option>No</option><option>Yes</option></select></label>
+      <label>Follow-up notes<textarea name="notes"></textarea></label>
+      <button class="btn">Complete Follow-Up and Close</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="card panel-card">
+  <h2>Activity Log</h2>
+  <% logs.forEach(l=>{ %><p class="muted"><%= l.created_at %> — <b><%= l.action %></b> by <%= l.user_name || 'Applicant/System' %>: <%= l.details %></p><% }) %>
+</section>
+
+<%- include('partials_footer') %>

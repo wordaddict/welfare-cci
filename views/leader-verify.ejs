@@ -1,0 +1,103 @@
+<%- include('partials_header') %>
+<section class="verification-shell">
+  <div class="card panel-card verification-card">
+    <p class="eyebrow">Pastoral verification</p>
+    <h1>Pastoral Verification of Financial Assistance Request</h1>
+    <p><b><%= request.full_name %></b> identified you as their Pastor for request <b><%= request.case_id %></b>.</p>
+    <p class="muted">Please review the application information below and answer every verification question. Your response is confidential and will be used by the Welfare Committee when considering the request.</p>
+
+    <% if (error) { %><p class="alert"><%= error %></p><% } %>
+
+    <section class="pastor-application-snapshot">
+      <h2>Application Details Submitted by the Applicant</h2>
+      <div class="info-grid compact">
+        <div><span>Applicant's name</span><strong><%= request.full_name %></strong></div>
+        <div><span>CCI community identified by the applicant</span><strong><%= request.cci_connection_type %> · <%= request.cci_community_name %></strong></div>
+        <div><span>Official CCI membership reported by the applicant</span><strong><%= request.membership_status === 'Yes' ? 'Official member' : 'Not yet an official member' %></strong></div>
+        <div><span>MAP group participation reported by the applicant</span><strong><%= request.membership_status === 'No' ? (request.map_group_status === 'Yes' ? `Yes${request.map_group_name ? ` · ${request.map_group_name}` : ''}` : 'No MAP group reported') : 'Not applicable' %></strong></div>
+        <div><span>Celeforce worker status reported by the applicant</span><strong><%= request.worker_status === 'Yes' ? 'Celeforce worker' : 'Not a Celeforce worker' %></strong></div>
+        <div><span>Length of Celeforce service</span><strong><%= request.worker_status === 'Yes' ? `${request.worker_duration_value || ''} ${request.worker_duration_unit || ''}` : 'Not applicable' %></strong></div>
+        <% if (request.worker_status === 'Yes') { %>
+          <div><span>Unit reported by the applicant</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
+          <div><span>Leadership verification status</span><strong><%= request.unit_leader_verified || 'Pending' %></strong></div>
+        <% } %>
+        <div><span>Length of connection with CCI</span><strong><%= request.connection_duration %></strong></div>
+        <div><span>Type of assistance requested</span><strong><%= request.request_category %></strong></div>
+        <div><span>Total amount needed</span><strong>$<%= Number(request.total_amount_needed || 0).toFixed(2) %></strong></div>
+        <div><span>Amount requested from CCI America</span><strong>$<%= Number(request.amount_requested || 0).toFixed(2) %></strong></div>
+        <div><span>Applicant's contribution</span><strong>$<%= Number(request.applicant_contribution || 0).toFixed(2) %></strong></div>
+        <div><span>Confirmed support from other sources</span><strong>$<%= Number(request.other_confirmed_support || 0).toFixed(2) %></strong></div>
+        <div><span>Dependents directly affected</span><strong><%= request.dependents_affected || 'No' %></strong></div>
+        <div><span>Payment due date</span><strong><%= request.due_date || 'Not provided' %></strong></div>
+        <div><span>Nature of need</span><strong><%= request.one_time_or_ongoing %></strong></div>
+        <div><span>Previous CCI America financial assistance</span><strong><%= request.prior_assistance %></strong></div>
+        <div><span>Pastor notification</span><strong><%= request.pastor_informed === 'Yes' ? 'Applicant confirmed that the Pastor was informed' : 'Not confirmed' %></strong></div>
+      </div>
+
+      <div class="leader-text-block"><span>Applicant's description of the current situation</span><p><%= request.situation %></p></div>
+      <div class="leader-text-block"><span>What the applicant stated may happen if support is not provided</span><p><%= request.consequence %></p></div>
+      <div class="leader-text-block"><span>Steps the applicant has already taken or other assistance sought</span><p><%= request.applicant_effort || 'Not provided.' %></p></div>
+      <% if (request.prior_assistance === 'Yes') { %><div class="leader-text-block"><span>Details of previous CCI America assistance</span><p><%= request.prior_assistance_details || 'Not provided.' %></p></div><% } %>
+      <% if (categoryDetails && Object.keys(categoryDetails).length) { %>
+        <div class="leader-text-block">
+          <span>Details specific to this request</span>
+          <p>
+            <% const categoryLabels = {
+              rent_due:'Rent due', eviction_risk:'Eviction or housing-loss risk', utility_type:'Utility type', disconnection_notice:'Disconnection notice',
+              household_size:'Household size', food_urgent:'Urgent food need', medical_type:'Medical need type', medical_urgent:'Urgent medical need',
+              school_name:'School or institution', education_purpose:'Education purpose', current_accommodation:'Current accommodation', accommodation_timeline:'Accommodation timeline',
+              safety_concern:'Safety concern', event_name:'CCI event', event_support_type:'Event support requested', event_support_details:'Event support details',
+              other_description:'Description of exceptional need', other_urgency:'Why the need is urgent or important', category:'Request category'
+            }; %>
+            <% const items = Object.entries(categoryDetails).filter(([k,v]) => v && String(v).trim()); %>
+            <% items.forEach(([k,v], idx) => { %><%= categoryLabels[k] || k.replace(/_/g,' ') %>: <%= v %><%= idx < items.length - 1 ? ' · ' : '' %><% }) %>
+          </p>
+        </div>
+      <% } %>
+      <p class="fine-print">Sensitive payment details, internal reviewer notes, and committee deliberations are not shown on this pastoral verification page.</p>
+    </section>
+
+    <form method="post" action="/pastor-verify/<%= token %>" enctype="multipart/form-data" class="stacked-form">
+      <h2>Pastor's Verification</h2>
+      <div class="two">
+        <label>Your name *<input name="verifier_name" value="<%= request.leader_name || '' %>" required></label>
+        <label>Your email address *<input name="verifier_email" type="email" value="<%= request.leader_email || '' %>" required></label>
+      </div>
+      <label>Your phone number *<input name="verifier_phone" value="<%= request.leader_phone || '' %>" required></label>
+
+      <div class="two">
+        <label>Is this person an official member of CCI? *
+          <select name="is_member" required><option value="">Select</option><option>Yes</option><option>No</option></select>
+        </label>
+        <label>Does this person currently participate in or attend CCI? *
+          <select name="is_regular_participant" required><option value="">Select</option><option>Yes</option><option>No</option></select>
+        </label>
+      </div>
+
+      <label>Is this person a worker (Celeforce)? *
+        <select name="is_worker" required><option value="">Select</option><option>Yes</option><option>No</option></select>
+      </label>
+
+      <label>How long have you known this person? *</label>
+      <div class="two">
+        <label>Number *
+          <select name="known_duration_value" required>
+            <option value="">Select</option>
+            <% for (let i = 1; i <= 60; i++) { %><option value="<%= i %>"><%= i %></option><% } %>
+          </select>
+        </label>
+        <label>Months / Years *
+          <select name="known_duration_unit" required><option value="">Select</option><option>Months</option><option>Years</option></select>
+        </label>
+      </div>
+
+      <label>Please provide any other comments or information that may help the Welfare Committee make a decision. *
+        <textarea name="decision_comments" required placeholder="If there is nothing additional to add, please enter 'No additional comments.'"></textarea>
+      </label>
+
+      <label>Upload an additional support letter, if available<input type="file" name="support_letter" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"></label>
+      <button class="btn">Submit Pastoral Verification</button>
+    </form>
+  </div>
+</section>
+<%- include('partials_footer') %>
