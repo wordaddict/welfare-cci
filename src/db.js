@@ -240,6 +240,12 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS case_sequences (
+      case_year INTEGER PRIMARY KEY,
+      last_value BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS stored_files (
       id BIGSERIAL PRIMARY KEY,
       storage_key TEXT NOT NULL UNIQUE,

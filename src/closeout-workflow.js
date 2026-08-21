@@ -28,7 +28,7 @@ function createCloseoutWorkflow({
     const method = paymentInfo.method || request.payment_confirmation_method || 'as arranged by the finance team';
     const reference = paymentInfo.reference || request.payment_confirmation_reference || 'not provided';
 
-    await sendNotification({
+    const delivery = await sendNotification({
       db,
       requestId: request.id,
       recipientName: request.full_name,
@@ -56,13 +56,19 @@ With care,
 CCI America Financial Assistance Committee`
     });
 
+    if (!delivery.success) {
+      await logActivity(request.id, null, 'Applicant payment update email failed', delivery.reason || 'Email delivery failed');
+      return delivery;
+    }
+
     await closeoutRepository.markApplicantPaymentNotified(db, request.id);
     await logActivity(request.id, null, 'Applicant payment update email sent', 'Applicant received supportive payment/update email. Close-out request will be sent later.');
+    return delivery;
   }
 
   async function sendApplicantCloseoutRequest(db, req, request) {
     const trackingLink = `${baseUrl(req)}/track/${request.tracking_token}`;
-    await sendNotification({
+    const delivery = await sendNotification({
       db,
       requestId: request.id,
       recipientName: request.full_name,
@@ -87,14 +93,20 @@ Thank you,
 CCI America Financial Assistance Committee`
     });
 
+    if (!delivery.success) {
+      await logActivity(request.id, null, 'Applicant close-out form email failed', delivery.reason || 'Email delivery failed');
+      return delivery;
+    }
+
     await closeoutRepository.markApplicantFollowupRequested(db, request.id);
     await logActivity(request.id, null, 'Applicant close-out form requested', 'Close-out/follow-up request email sent after payment confirmation.');
+    return delivery;
   }
 
   async function sendApplicantCloseoutReminder(db, req, request) {
     const trackingLink = `${baseUrl(req)}/track/${request.tracking_token}`;
     const count = Number(request.applicant_followup_reminder_count || 0) + 1;
-    await sendNotification({
+    const delivery = await sendNotification({
       db,
       requestId: request.id,
       recipientName: request.full_name,
@@ -117,8 +129,14 @@ Thank you,
 CCI America Financial Assistance Committee`
     });
 
+    if (!delivery.success) {
+      await logActivity(request.id, null, 'Applicant close-out reminder email failed', delivery.reason || 'Email delivery failed');
+      return delivery;
+    }
+
     await closeoutRepository.markApplicantFollowupReminderSent(db, request.id, count);
     await logActivity(request.id, null, 'Applicant close-out reminder sent', `Weekly close-out reminder #${count} sent.`);
+    return delivery;
   }
 
   async function runApplicantCloseoutSweep(reason = 'scheduled') {
@@ -139,8 +157,8 @@ CCI America Financial Assistance Committee`
           const ageDays = (now - confirmedAt) / 86400000;
           if (!request.applicant_followup_requested_at) {
             if (ageDays >= delay) {
-              await sendApplicantCloseoutRequest(db, null, request);
-              sent += 1;
+              const delivery = await sendApplicantCloseoutRequest(db, null, request);
+              if (delivery && delivery.success) sent += 1;
             }
             continue;
           }
@@ -149,8 +167,8 @@ CCI America Financial Assistance Committee`
           const lastReminderTime = lastReminderAt ? new Date(lastReminderAt).getTime() : confirmedAt;
           const daysSinceLastReminder = (now - lastReminderTime) / 86400000;
           if (daysSinceLastReminder >= reminderInterval) {
-            await sendApplicantCloseoutReminder(db, null, request);
-            reminded += 1;
+            const delivery = await sendApplicantCloseoutReminder(db, null, request);
+            if (delivery && delivery.success) reminded += 1;
           }
         } catch (err) {
           console.error(`[closeout-sweep] ${request.case_id}:`, err.message);

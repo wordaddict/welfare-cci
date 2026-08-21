@@ -26,6 +26,7 @@ function createReviewerWorkflow({
     const replaceHours = request.urgency === 'Emergency' ? 24 : 72;
 
     const pendingActive = await reviewerRepository.listPendingActiveReviewerAssignments(db, requestId);
+    let notificationsQueued = 0;
 
     const now = Date.now();
     for (const inv of pendingActive) {
@@ -35,7 +36,7 @@ function createReviewerWorkflow({
         await reviewerRepository.expireReviewerAssignment(db, inv.id);
         await logActivity(requestId, null, 'Reviewer invitation expired', `${inv.email} did not respond within ${replaceHours} hours.`);
         if (!appConfig.jobs.autoAssignReviewers) {
-          await sendNotification({
+          const delivery = await sendNotification({
             db,
             requestId,
             recipientName: 'CCI Welfare Admin',
@@ -43,10 +44,13 @@ function createReviewerWorkflow({
             subject: `Reviewer replacement needed: ${request.case_id}`,
             body: `${inv.name} (${inv.email}) did not respond to the review invitation within the allowed window. Please assign a replacement reviewer from the Admin portal.`
           });
+          if (!delivery.success) {
+            await logActivity(requestId, null, 'Reviewer replacement email failed', delivery.reason || 'Email delivery failed');
+          }
         }
       } else if (ageHours >= reminderHours && !inv.reminder_sent_at) {
         const acceptLink = `${baseUrl(req)}/review-invite/${inv.invite_token}`;
-        await sendNotification({
+        const delivery = await sendNotification({
           db,
           requestId,
           recipientName: inv.name,
@@ -63,8 +67,12 @@ If there is no response within the review window, another reviewer may be contac
 
 CCI America Financial Assistance Committee`
         });
-        await reviewerRepository.markReviewerReminderSent(db, inv.id);
-        await logActivity(requestId, inv.reviewer_id, 'Reviewer reminder sent', `Reminder sent after ${reminderHours} hours.`);
+        if (delivery.success) {
+          await reviewerRepository.markReviewerReminderSent(db, inv.id);
+          await logActivity(requestId, inv.reviewer_id, 'Reviewer reminder sent', `Reminder sent after ${reminderHours} hours.`);
+        } else {
+          await logActivity(requestId, inv.reviewer_id, 'Reviewer reminder email failed', delivery.reason || 'Email delivery failed');
+        }
       }
     }
 
@@ -93,7 +101,7 @@ CCI America Financial Assistance Committee`
         await reviewerRepository.updateReviewerInviteToken(db, reviewer.assignment_id, token);
       }
       const inviteLink = `${baseUrl(req)}/review-invite/${token}`;
-      await sendNotification({
+      const delivery = await sendNotification({
         db,
         requestId,
         recipientName: reviewer.name,
@@ -114,14 +122,19 @@ Review window:
 
 CCI America Financial Assistance Committee`
       });
-      await reviewerRepository.markReviewerNotified(db, reviewer.assignment_id);
+      if (delivery.success) {
+        await reviewerRepository.markReviewerNotified(db, reviewer.assignment_id);
+        notificationsQueued += 1;
+      } else {
+        await logActivity(requestId, reviewer.id, 'Reviewer invite email failed', delivery.reason || 'Email delivery failed');
+      }
     }
 
     const activeAfter = await reviewerRepository.countActiveReviewerAssignments(db, requestId);
     if ((activeAfter.count || 0) > 0) {
       await reviewerRepository.updateRequestStatus(db, requestId, 'Assigned to Reviewers');
     }
-    return pending.length;
+    return notificationsQueued;
   }
 
   async function notifyAssignedReviewers(db, req, requestId) {

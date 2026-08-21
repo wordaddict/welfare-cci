@@ -20,7 +20,11 @@ async function sendNotification({ db, requestId, recipientName, recipientEmail, 
       'UPDATE notifications SET status=?, provider=?, provider_message_id=?, sent_at=CURRENT_TIMESTAMP WHERE id=?',
       [status, result.provider || null, result.messageId || null, saved.lastID]
     );
-    return;
+    return {
+      ...result,
+      notificationId: saved.lastID,
+      notificationStatus: status
+    };
   }
 
   await db.run(
@@ -28,6 +32,12 @@ async function sendNotification({ db, requestId, recipientName, recipientEmail, 
     ['Failed', result.provider || null, result.messageId || null, result.reason || 'Email delivery failed', saved.lastID]
   );
   console.error('Email failed:', result.reason);
+
+  return {
+    ...result,
+    notificationId: saved.lastID,
+    notificationStatus: 'Failed'
+  };
 }
 
 module.exports = { sendNotification };

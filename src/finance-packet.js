@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { getAppConfig } = require('./config');
 const { money } = require('./helpers');
 const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment');
 
@@ -233,10 +234,11 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
   }
 
   async function emailFinanceDecisionPacket(db, req, requestId) {
+    const appConfig = getAppConfig();
     const { request, docs, verifications, assignedReviewers, reviews, reviewSummary } = await getDecisionArtifacts(db, requestId);
     if (!request) return;
-    const financeEmail = process.env.FINANCE_TEAM_EMAIL || 'finance@cci.local';
-    const financeName = process.env.FINANCE_TEAM_NAME || 'CCI USA Finance Team';
+    const financeEmail = appConfig.jobs.financeTeamEmail;
+    const financeName = appConfig.jobs.financeTeamName;
     const approved = isApprovalDecision(request.decision);
     let token = request.finance_confirm_token;
     if (!token) {
@@ -282,7 +284,7 @@ Confidentiality: This information is for CCI USA Finance Team and authorized com
 
 CCI America Financial Assistance Committee`;
 
-    await sendNotification({
+    const delivery = await sendNotification({
       db,
       requestId: request.id,
       recipientName: financeName,
@@ -291,8 +293,14 @@ CCI America Financial Assistance Committee`;
       body,
       attachments: [{ filename: `${request.case_id}-finance-submission-package.zip`, content: packetBuffer }]
     });
+    if (!delivery.success) {
+      await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${delivery.reason || 'Email delivery failed'}`);
+      return delivery;
+    }
+
     await db.run('UPDATE requests SET finance_packet_sent_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
     await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet emailed', `Sent to ${financeEmail} with committee decision: ${request.decision}`);
+    return delivery;
   }
 
   return {

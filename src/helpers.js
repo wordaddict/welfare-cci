@@ -120,8 +120,23 @@ function calculateUrgency(dueDate, categoryDetails, category, consequence = '', 
 
 async function generateCaseId(db) {
   const year = new Date().getFullYear();
-  const row = await db.get('SELECT COUNT(*) as count FROM requests WHERE case_id LIKE ?', [`CCI-FIN-${year}-%`]);
-  return `CCI-FIN-${year}-${String((row.count || 0) + 1).padStart(3, '0')}`;
+  const pattern = `CCI-FIN-${year}-%`;
+
+  await db.get(`
+    INSERT INTO case_sequences (case_year, last_value)
+    SELECT ?, COALESCE(MAX(CAST(split_part(case_id, '-', 4) AS INTEGER)), 0)
+    FROM requests
+    WHERE case_id LIKE ?
+    ON CONFLICT (case_year) DO NOTHING
+    RETURNING last_value
+  `, [year, pattern]);
+
+  const row = await db.get(
+    'UPDATE case_sequences SET last_value = last_value + 1, updated_at=CURRENT_TIMESTAMP WHERE case_year=? RETURNING last_value',
+    year
+  );
+
+  return `CCI-FIN-${year}-${String(row.last_value || 1).padStart(3, '0')}`;
 }
 
 module.exports = { money, escapeCsv, normalizeMultiValue, requireAuth, requireRole, parseCategoryDetails, calculateUrgency, calculateUrgencyResult, generateCaseId };

@@ -104,11 +104,6 @@ function renderBlockedRequest(res, message) {
   });
 }
 
-function normalizeHost(value) {
-  if (!value) return null;
-  return String(value).trim().toLowerCase();
-}
-
 function headerUrlHost(value) {
   if (!value) return null;
   try {
@@ -118,10 +113,8 @@ function headerUrlHost(value) {
   }
 }
 
-function trustedRequestHosts(req) {
+function trustedRequestHosts() {
   const hosts = new Set();
-  const requestHost = normalizeHost(req.get('host'));
-  if (requestHost) hosts.add(requestHost);
   if (appConfig.appBaseUrl) {
     const appBaseHost = headerUrlHost(appConfig.appBaseUrl);
     if (appBaseHost) hosts.add(appBaseHost);
@@ -133,26 +126,35 @@ function trustedRequestHosts(req) {
   return hosts;
 }
 
+function isTrustedSameOriginNavigation(req, trustedHosts) {
+  const referer = req.get('referer');
+  const refererHost = headerUrlHost(referer);
+  if (referer && !refererHost) return false;
+  if (refererHost) return trustedHosts.has(refererHost);
+
+  const fetchSite = String(req.get('sec-fetch-site') || '').trim().toLowerCase();
+  const fetchMode = String(req.get('sec-fetch-mode') || '').trim().toLowerCase();
+  const fetchDest = String(req.get('sec-fetch-dest') || '').trim().toLowerCase();
+
+  return fetchSite === 'same-origin' && fetchMode === 'navigate' && fetchDest === 'document';
+}
+
 app.use((req, res, next) => {
   if (appConfig.nodeEnv !== 'production' || ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const origin = req.get('origin');
-  const referer = req.get('referer');
-  const fetchSite = String(req.get('sec-fetch-site') || '').trim().toLowerCase();
-  const trustedHosts = trustedRequestHosts(req);
+  const trustedHosts = trustedRequestHosts();
+
+  if (trustedHosts.size === 0) {
+    return renderBlockedRequest(res, 'Application origin is not configured.');
+  }
 
   if (!origin) {
-    const refererHost = headerUrlHost(referer);
-    if (referer && !refererHost) return renderBlockedRequest(res, 'Invalid request referer.');
-    if (refererHost && !trustedHosts.has(refererHost)) {
-      return renderBlockedRequest(res, 'This form submission did not originate from the CCI Welfare application.');
-    }
-    return next();
+    if (isTrustedSameOriginNavigation(req, trustedHosts)) return next();
+    return renderBlockedRequest(res, 'Missing request origin.');
   }
 
   if (origin === 'null') {
-    const refererHost = headerUrlHost(referer);
-    if (refererHost && trustedHosts.has(refererHost)) return next();
-    if (fetchSite === 'same-origin') return next();
+    if (isTrustedSameOriginNavigation(req, trustedHosts)) return next();
     return renderBlockedRequest(res, 'Invalid request origin.');
   }
 
@@ -186,6 +188,7 @@ app.get('/', (req, res) => res.render('home', { title: 'CCI America Financial As
 
 mountAuthRoutes(app, { getDb });
 mountPublicRoutes(app, {
+  appConfig,
   applicantStatusInfo,
   baseUrl,
   buildSystemAssessment,
@@ -203,6 +206,7 @@ mountPublicRoutes(app, {
   upload
 });
 mountAdminRoutes(app, {
+  appConfig,
   baseUrl,
   buildFinancePacketZipBuffer: financePacketService.buildFinancePacketZipBuffer,
   buildFinanceSummaryPdfBuffer: financePacketService.buildFinanceSummaryPdfBuffer,

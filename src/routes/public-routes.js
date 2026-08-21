@@ -12,6 +12,7 @@ function normalizeApplicantName(value) {
 }
 
 function mountPublicRoutes(app, {
+  appConfig,
   applicantStatusInfo,
   baseUrl,
   buildSystemAssessment,
@@ -28,6 +29,9 @@ function mountPublicRoutes(app, {
   sendStoredFile,
   upload
 }) {
+  const adminNotificationEmail = appConfig.jobs.adminEmail;
+  const financeTeamName = appConfig.jobs.financeTeamName;
+
   async function renderLeadershipVerification(req, res) {
     const db = await getDb();
     const request = await db.get('SELECT * FROM requests WHERE unit_leader_verification_token=?', req.params.token);
@@ -72,7 +76,7 @@ function mountPublicRoutes(app, {
 
     if (!request.leader_verification_sent_at) {
       const pastorLink = `${baseUrl(req)}/pastor-verify/${request.leader_verification_token}`;
-      await sendNotification({
+      const delivery = await sendNotification({
         db,
         requestId: request.id,
         recipientName: request.leader_name,
@@ -90,8 +94,12 @@ This request should be handled confidentially.
 
 CCI America Financial Assistance Committee`
       });
-      await db.run('UPDATE requests SET leader_verification_sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
-      await logActivity(request.id, null, 'Pastoral verification email prepared after leadership verification', request.leader_email);
+      if (delivery.success) {
+        await db.run('UPDATE requests SET leader_verification_sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
+        await logActivity(request.id, null, 'Pastoral verification email prepared after leadership verification', request.leader_email);
+      } else {
+        await logActivity(request.id, null, 'Pastoral verification email failed after leadership verification', delivery.reason || 'Email delivery failed');
+      }
     }
 
     res.render('leadership-verify-success', { title: 'Leadership Verification Submitted', request, publicPage: true });
@@ -157,14 +165,17 @@ CCI America Financial Assistance Committee`
     } else {
       const activeAssignments = await db.get('SELECT COUNT(*) as count FROM request_reviewers WHERE request_id=? AND declined_at IS NULL AND expired_at IS NULL', request.id);
       if ((activeAssignments.count || 0) === 0) {
-        await sendNotification({
+        const delivery = await sendNotification({
           db,
           requestId: request.id,
           recipientName: 'CCI Welfare Admin',
-          recipientEmail: process.env.ADMIN_EMAIL || 'admin@cci.local',
+          recipientEmail: adminNotificationEmail,
           subject: `Reviewer assignment needed: ${request.case_id}`,
           body: `Pastoral verification is complete for ${request.case_id}. Please log in to the Admin portal and assign two reviewers from the Reviewer Directory.`
         });
+        if (!delivery.success) {
+          await logActivity(request.id, null, 'Reviewer assignment needed email failed', delivery.reason || 'Email delivery failed');
+        }
       }
     }
 
@@ -202,7 +213,6 @@ CCI America Financial Assistance Committee`
       const pastorToken = crypto.randomBytes(24).toString('hex');
       const unitLeaderToken = req.body.worker_status === 'Yes' ? crypto.randomBytes(24).toString('hex') : null;
       const trackingToken = crypto.randomBytes(24).toString('hex');
-      const nowIso = new Date().toISOString();
       const initialStatus = req.body.worker_status === 'Yes' ? 'Awaiting Leadership Verification' : 'Awaiting Pastoral Verification';
 
       const columns = [
@@ -217,7 +227,7 @@ CCI America Financial Assistance Committee`
       const values = [
         caseId, req.session.user.id, req.body.full_name, req.body.email, req.body.phone, req.body.city_state, req.body.cci_connection_type, req.body.cci_community_name,
         req.body.leader_name, 'Pastor', `${req.body.leader_email} / ${req.body.leader_phone}`, req.body.leader_email, req.body.leader_phone, pastorToken,
-        req.body.worker_status === 'Yes' ? null : nowIso, trackingToken,
+        null, trackingToken,
         req.body.connection_duration, req.body.membership_status,
         req.body.membership_status === 'No' ? req.body.map_group_status : null,
         req.body.membership_status === 'No' && req.body.map_group_status === 'Yes' ? req.body.map_group_name : null,
@@ -229,7 +239,7 @@ CCI America Financial Assistance Committee`
         req.body.worker_status === 'Yes' ? req.body.unit_leader_email : null,
         req.body.worker_status === 'Yes' ? req.body.unit_leader_phone : null,
         unitLeaderToken,
-        req.body.worker_status === 'Yes' ? nowIso : null,
+        null,
         req.body.worker_status === 'Yes' ? 'Pending' : 'Not Required',
         req.body.pastor_informed,
         req.body.request_category, Number(req.body.amount_requested), Number(req.body.total_amount_needed), req.body.due_date || null,
@@ -258,7 +268,7 @@ CCI America Financial Assistance Committee`
 
       if (req.body.worker_status === 'Yes') {
         const leadershipLink = `${baseUrl(req)}/leadership-verify/${unitLeaderToken}`;
-        await sendNotification({
+        const delivery = await sendNotification({
           db,
           requestId: result.lastID,
           recipientName: req.body.unit_leader_name,
@@ -278,10 +288,15 @@ This request should be handled confidentially.
 
 CCI America Financial Assistance Committee`
         });
-        await logActivity(result.lastID, null, 'Leadership verification email prepared', req.body.unit_leader_email);
+        if (delivery.success) {
+          await db.run('UPDATE requests SET unit_leader_verification_sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?', result.lastID);
+          await logActivity(result.lastID, null, 'Leadership verification email prepared', req.body.unit_leader_email);
+        } else {
+          await logActivity(result.lastID, null, 'Leadership verification email failed', delivery.reason || 'Email delivery failed');
+        }
       } else {
         const pastorLink = `${baseUrl(req)}/pastor-verify/${pastorToken}`;
-        await sendNotification({
+        const delivery = await sendNotification({
           db,
           requestId: result.lastID,
           recipientName: req.body.leader_name,
@@ -299,7 +314,12 @@ This request should be handled confidentially.
 
 CCI America Financial Assistance Committee`
         });
-        await logActivity(result.lastID, null, 'Pastoral verification email prepared', req.body.leader_email);
+        if (delivery.success) {
+          await db.run('UPDATE requests SET leader_verification_sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?', result.lastID);
+          await logActivity(result.lastID, null, 'Pastoral verification email prepared', req.body.leader_email);
+        } else {
+          await logActivity(result.lastID, null, 'Pastoral verification email failed', delivery.reason || 'Email delivery failed');
+        }
       }
 
       const applicantTrackingName = String(req.body.full_name || '').trim();
@@ -307,7 +327,7 @@ CCI America Financial Assistance Committee`
         ? 'Because you identified yourself as a Celeforce worker, your Unit Head will complete leadership verification first. Your Pastor will then receive the pastoral verification request.'
         : 'Your Pastor will be asked to complete a confidential pastoral verification before committee review.';
 
-      await sendNotification({
+      const applicantDelivery = await sendNotification({
         db,
         requestId: result.lastID,
         recipientName: req.body.full_name,
@@ -326,7 +346,11 @@ ${verificationMessage}
 
 CCI America Financial Assistance Committee`
       });
-      await logActivity(result.lastID, null, 'Applicant tracking email prepared', req.body.email);
+      if (applicantDelivery.success) {
+        await logActivity(result.lastID, null, 'Applicant tracking email prepared', req.body.email);
+      } else {
+        await logActivity(result.lastID, null, 'Applicant tracking email failed', applicantDelivery.reason || 'Email delivery failed');
+      }
       res.redirect(`/apply/success/${caseId}?token=${trackingToken}`);
     } catch (err) {
       res.status(400).render('apply', { title: 'Financial Assistance Request', error: err.message });
@@ -382,12 +406,15 @@ CCI America Financial Assistance Committee`
       VALUES (?,?,?,?,?,?,?,?,?)`, [request.id, request.applicant_user_id || 1, req.body.funds_used_as_intended, req.body.issue_resolved, 'Yes', 'Pending admin review', req.body.notes, 1, storedReceipt.storageKey]);
     await db.run('UPDATE requests SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', ['Follow-Up Submitted', request.id]);
     await logActivity(request.id, request.applicant_user_id || null, 'Applicant follow-up submitted', 'Applicant uploaded receipt/payment evidence for follow-up closure.');
-    await sendNotification({ db, requestId: request.id, recipientName: 'Admin', recipientEmail: 'admin@cci.local', subject: `Follow-up evidence submitted: ${request.case_id}`, body: `Applicant follow-up evidence has been submitted for ${request.case_id}. Please log in as admin and complete follow-up closure.` });
+    const delivery = await sendNotification({ db, requestId: request.id, recipientName: 'Admin', recipientEmail: adminNotificationEmail, subject: `Follow-up evidence submitted: ${request.case_id}`, body: `Applicant follow-up evidence has been submitted for ${request.case_id}. Please log in as admin and complete follow-up closure.` });
+    if (!delivery.success) {
+      await logActivity(request.id, request.applicant_user_id || null, 'Applicant follow-up admin notification failed', delivery.reason || 'Email delivery failed');
+    }
     res.redirect(`/track/${req.params.token}`);
   });
 
   app.get('/dev-login/:role', async (req, res) => {
-    if (process.env.NODE_ENV === 'production') return res.status(404).send('Not found');
+    if (appConfig.nodeEnv === 'production') return res.status(404).send('Not found');
     const role = req.params.role;
     const allowed = { admin: 'admin@cci.local', applicant: 'applicant@cci.local' };
     const email = allowed[role];
@@ -442,13 +469,13 @@ CCI America Financial Assistance Committee`
     if (!reviewToken) reviewToken = crypto.randomBytes(32).toString('hex');
 
     await db.run(`UPDATE request_reviewers
-      SET accepted_at=COALESCE(accepted_at,CURRENT_TIMESTAMP), review_token=?, review_token_sent_at=COALESCE(review_token_sent_at,CURRENT_TIMESTAMP), invite_token=NULL
+      SET accepted_at=COALESCE(accepted_at,CURRENT_TIMESTAMP), review_token=?, invite_token=NULL
       WHERE id=?`, [reviewToken, invite.id]);
     await db.run('UPDATE requests SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', ['Committee Review', invite.request_id]);
 
     if (firstAcceptance || !invite.review_token_sent_at) {
       const reviewLink = `${baseUrl(req)}/review/${reviewToken}`;
-      await sendNotification({
+      const delivery = await sendNotification({
         db,
         requestId: invite.request_id,
         recipientName: invite.reviewer_name,
@@ -465,7 +492,12 @@ This link is intended only for you. Please do not forward it. No reviewer accoun
 
 CCI America Financial Assistance Committee`
       });
-      await logActivity(invite.request_id, null, 'Reviewer accepted assignment', `${invite.reviewer_email} accepted; secure review link sent.`);
+      if (delivery.success) {
+        await db.run('UPDATE request_reviewers SET review_token_sent_at=COALESCE(review_token_sent_at,CURRENT_TIMESTAMP) WHERE id=?', invite.id);
+        await logActivity(invite.request_id, null, 'Reviewer accepted assignment', `${invite.reviewer_email} accepted; secure review link sent.`);
+      } else {
+        await logActivity(invite.request_id, null, 'Reviewer review-link email failed', delivery.reason || 'Email delivery failed');
+      }
     }
 
     res.render('review-invite-accepted', { title: 'Review Accepted', publicPage: true, publicLabel: 'Secure reviewer invitation', reviewerEmail: invite.reviewer_email });
@@ -481,11 +513,14 @@ CCI America Financial Assistance Committee`
     if (!invite) return res.status(404).render('error', { title: 'Invalid review invite', message: 'This review invitation link is invalid or expired.', publicPage: true, publicLabel: 'Secure reviewer invitation' });
     if (!invite.accepted_at) await db.run('UPDATE request_reviewers SET declined_at=CURRENT_TIMESTAMP WHERE id=?', invite.id);
     await logActivity(invite.request_id, null, 'Reviewer declined assignment', `${invite.reviewer_email} declined the availability request.`);
-    if (process.env.AUTO_ASSIGN_REVIEWERS === 'true') {
+    if (appConfig.jobs.autoAssignReviewers) {
       await ensureTwoReviewerInvites(db, req, invite.request_id);
     } else {
       const request = await db.get('SELECT case_id FROM requests WHERE id=?', invite.request_id);
-      await sendNotification({ db, requestId: invite.request_id, recipientName: 'CCI Welfare Admin', recipientEmail: process.env.ADMIN_EMAIL || 'admin@cci.local', subject: `Reviewer declined: ${request ? request.case_id : 'CCI case'}`, body: `${invite.reviewer_email} declined the review invitation. Please assign another reviewer from the Admin portal.` });
+      const delivery = await sendNotification({ db, requestId: invite.request_id, recipientName: 'CCI Welfare Admin', recipientEmail: adminNotificationEmail, subject: `Reviewer declined: ${request ? request.case_id : 'CCI case'}`, body: `${invite.reviewer_email} declined the review invitation. Please assign another reviewer from the Admin portal.` });
+      if (!delivery.success) {
+        await logActivity(invite.request_id, null, 'Reviewer declined notification failed', delivery.reason || 'Email delivery failed');
+      }
     }
     res.render('review-invite-accepted', { title: 'Review Declined', publicPage: true, publicLabel: 'Secure reviewer invitation', declined: true });
   });
@@ -578,8 +613,10 @@ CCI America Financial Assistance Committee`
     const reviewCount = await db.get('SELECT COUNT(*) as count FROM reviews WHERE request_id=?', access.request_id);
     await db.run('UPDATE requests SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [(reviewCount.count || 0) >= 2 ? 'Reviews Complete' : 'Committee Review', access.request_id]);
     if ((reviewCount.count || 0) >= 2) {
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@cci.local';
-      await sendNotification({ db, requestId: access.request_id, recipientName: 'CCI Welfare Admin', recipientEmail: adminEmail, subject: `Two reviews completed: ${request.case_id}`, body: `Two independent reviewer assessments have now been submitted for ${request.case_id}. The case is ready for the committee/admin decision stage.` });
+      const delivery = await sendNotification({ db, requestId: access.request_id, recipientName: 'CCI Welfare Admin', recipientEmail: adminNotificationEmail, subject: `Two reviews completed: ${request.case_id}`, body: `Two independent reviewer assessments have now been submitted for ${request.case_id}. The case is ready for the committee/admin decision stage.` });
+      if (!delivery.success) {
+        await logActivity(access.request_id, null, 'Two-reviews-complete notification failed', delivery.reason || 'Email delivery failed');
+      }
     }
     res.render('review-submitted', { title: 'Review Submitted', publicPage: true, publicLabel: 'Secure reviewer workspace', access: { ...access, review_submitted_at: new Date().toISOString() } });
   });
@@ -600,23 +637,27 @@ CCI America Financial Assistance Committee`
     }
     const storedConfirmationFile = req.file ? await saveUploadedFile(db, req.file, { folder: `finance-confirmations/${request.case_id}` }) : null;
     await db.run(`UPDATE requests SET payment_confirmed_at=CURRENT_TIMESTAMP, payment_confirmed_by=?, payment_confirmation_amount=?, payment_confirmation_method=?, payment_confirmation_reference=?, payment_confirmation_notes=?, payment_confirmation_file=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, [
-      req.body.confirmed_by || 'CCI USA Finance Team', req.body.amount_paid || request.amount_approved || request.amount_requested, req.body.payment_method || '', req.body.payment_reference || '', req.body.confirmation_notes || '', storedConfirmationFile ? storedConfirmationFile.storageKey : null, 'Payment Confirmed', request.id
+      req.body.confirmed_by || financeTeamName, req.body.amount_paid || request.amount_approved || request.amount_requested, req.body.payment_method || '', req.body.payment_reference || '', req.body.confirmation_notes || '', storedConfirmationFile ? storedConfirmationFile.storageKey : null, 'Payment Confirmed', request.id
     ]);
     await logActivity(request.id, null, 'Finance payment confirmed', `Confirmed by ${req.body.confirmed_by || 'Finance'}; amount ${req.body.amount_paid || request.amount_approved || request.amount_requested}`);
-    await sendNotification({
+    const delivery = await sendNotification({
       db,
       requestId: request.id,
       recipientName: 'Admin',
-      recipientEmail: process.env.ADMIN_EMAIL || 'admin@cci.local',
+      recipientEmail: adminNotificationEmail,
       subject: `Payment confirmed by Finance: ${request.case_id}`,
       body: `Finance has confirmed payment for ${request.case_id} (${request.full_name}).
 
 Amount paid: ${req.body.amount_paid || request.amount_approved || request.amount_requested}
 Reference: ${req.body.payment_reference || 'Not provided'}
 
-The applicant has also been automatically notified that the request was approved and the support/payment has been processed. The normal close-out request will be sent after 3 days unless Admin sends it immediately.`
+The system will now attempt to notify the applicant that the request was approved and the support/payment has been processed. The normal close-out request will be sent after 3 days unless Admin sends it immediately.`
     });
-    await logActivity(request.id, null, 'Admin notified of finance payment confirmation', process.env.ADMIN_EMAIL || 'admin@cci.local');
+    if (delivery.success) {
+      await logActivity(request.id, null, 'Admin notified of finance payment confirmation', adminNotificationEmail);
+    } else {
+      await logActivity(request.id, null, 'Admin payment-confirmation notification failed', delivery.reason || 'Email delivery failed');
+    }
 
     const freshRequest = await db.get('SELECT * FROM requests WHERE id=?', request.id);
     await sendApplicantPaymentNotice(db, req, freshRequest, {

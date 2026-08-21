@@ -182,12 +182,21 @@ function mountAdminRoutes(app, {
     if (assignment.review_submitted_at) return res.redirect(`/requests/${req.params.id}?reviewAlreadySubmitted=1`);
     if (assignment.accepted_at && assignment.review_token) {
       const link = `${baseUrl(req)}/review/${assignment.review_token}`;
-      await sendNotification({ db, requestId: req.params.id, recipientName: assignment.name, recipientEmail: assignment.email, subject: `Secure review link: ${assignment.case_id}`, body: `Dear ${assignment.name},\n\nHere is your secure review link for ${assignment.case_id}:\n${link}\n\nPlease do not forward this link.\n\nCCI America Financial Assistance Committee` });
+      const delivery = await sendNotification({ db, requestId: req.params.id, recipientName: assignment.name, recipientEmail: assignment.email, subject: `Secure review link: ${assignment.case_id}`, body: `Dear ${assignment.name},\n\nHere is your secure review link for ${assignment.case_id}:\n${link}\n\nPlease do not forward this link.\n\nCCI America Financial Assistance Committee` });
+      if (!delivery.success) {
+        await logActivity(req.params.id, req.session.user.id, 'Reviewer secure-link resend failed', `${assignment.email}: ${delivery.reason || 'Email delivery failed'}`);
+        return res.redirect(`/requests/${req.params.id}?reviewerLinkFailed=1`);
+      }
+      await db.run('UPDATE request_reviewers SET review_token_sent_at=COALESCE(review_token_sent_at,CURRENT_TIMESTAMP) WHERE id=?', assignment.id);
     } else {
       const token = assignment.invite_token || crypto.randomBytes(32).toString('hex');
       if (!assignment.invite_token) await db.run('UPDATE request_reviewers SET invite_token=? WHERE id=?', [token, assignment.id]);
       const link = `${baseUrl(req)}/review-invite/${token}`;
-      await sendNotification({ db, requestId: req.params.id, recipientName: assignment.name, recipientEmail: assignment.email, subject: `Review availability requested: ${assignment.case_id}`, body: `Dear ${assignment.name},\n\nPlease accept or decline the confidential review invitation using this secure link:\n${link}\n\nCCI America Financial Assistance Committee` });
+      const delivery = await sendNotification({ db, requestId: req.params.id, recipientName: assignment.name, recipientEmail: assignment.email, subject: `Review availability requested: ${assignment.case_id}`, body: `Dear ${assignment.name},\n\nPlease accept or decline the confidential review invitation using this secure link:\n${link}\n\nCCI America Financial Assistance Committee` });
+      if (!delivery.success) {
+        await logActivity(req.params.id, req.session.user.id, 'Reviewer availability resend failed', `${assignment.email}: ${delivery.reason || 'Email delivery failed'}`);
+        return res.redirect(`/requests/${req.params.id}?reviewerLinkFailed=1`);
+      }
       await db.run('UPDATE request_reviewers SET notified_at=CURRENT_TIMESTAMP WHERE id=?', assignment.id);
     }
     await logActivity(req.params.id, req.session.user.id, 'Reviewer link resent', `${assignment.email}`);
@@ -277,12 +286,13 @@ function mountAdminRoutes(app, {
       req.body.decision, req.body.amount_approved || null, req.body.decision_notes || '', req.body.pastorate_required || 'No', req.body.pastorate_decision || '', req.body.documents_complete || 'Pending', status, req.params.id
     ]);
     await logActivity(req.params.id, req.session.user.id, 'Decision recorded', req.body.decision);
-    await emailFinanceDecisionPacket(db, req, req.params.id);
+    const financePacketDelivery = await emailFinanceDecisionPacket(db, req, req.params.id);
 
     const updatedRequest = await db.get('SELECT * FROM requests WHERE id=?', req.params.id);
+    let applicantOutcomeQuery = 'not-applicable';
     if (updatedRequest && !isApprovalDecision(updatedRequest.decision) && updatedRequest.decision !== 'Escalated to Pastorate') {
       const trackingLink = `${baseUrl(req)}/track/${updatedRequest.tracking_token}`;
-      await sendNotification({
+      const delivery = await sendNotification({
         db,
         requestId: updatedRequest.id,
         recipientName: updatedRequest.full_name,
@@ -299,11 +309,18 @@ ${trackingLink}
 
 CCI America Financial Assistance Committee`
       });
-      await db.run('UPDATE requests SET applicant_outcome_notified_at=CURRENT_TIMESTAMP, applicant_outcome_notified_by=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [req.session.user.id, 'Declined', updatedRequest.id]);
-      await logActivity(updatedRequest.id, req.session.user.id, 'Applicant decision email sent', updatedRequest.decision);
+      if (delivery.success) {
+        await db.run('UPDATE requests SET applicant_outcome_notified_at=CURRENT_TIMESTAMP, applicant_outcome_notified_by=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [req.session.user.id, 'Declined', updatedRequest.id]);
+        await logActivity(updatedRequest.id, req.session.user.id, 'Applicant decision email sent', updatedRequest.decision);
+        applicantOutcomeQuery = 'sent';
+      } else {
+        await logActivity(updatedRequest.id, req.session.user.id, 'Applicant decision email failed', delivery.reason || 'Email delivery failed');
+        applicantOutcomeQuery = 'failed';
+      }
     }
 
-    res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=sent`);
+    const financePacketQuery = financePacketDelivery && financePacketDelivery.success ? 'sent' : 'failed';
+    res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=${financePacketQuery}&applicantOutcome=${applicantOutcomeQuery}`);
   });
 
   app.post('/requests/:id/send-closeout-now', requireRole('admin'), async (req, res) => {
@@ -317,9 +334,14 @@ CCI America Financial Assistance Committee`
     if (existingFollowup) return res.redirect(`/requests/${request.id}?closeoutAlreadySubmitted=1`);
     if (request.applicant_followup_requested_at) return res.redirect(`/requests/${request.id}?closeoutAlreadySent=1`);
 
-    await sendApplicantCloseoutRequest(db, req, request);
-    await logActivity(request.id, req.session.user.id, 'Admin sent close-out form immediately', 'Admin bypassed the normal 3-day waiting period.');
-    res.redirect(`/requests/${request.id}?closeoutSentNow=1`);
+    const delivery = await sendApplicantCloseoutRequest(db, req, request);
+    if (delivery && delivery.success) {
+      await logActivity(request.id, req.session.user.id, 'Admin sent close-out form immediately', 'Admin bypassed the normal 3-day waiting period.');
+      return res.redirect(`/requests/${request.id}?closeoutSentNow=1`);
+    }
+
+    await logActivity(request.id, req.session.user.id, 'Admin close-out send failed', delivery && delivery.reason ? delivery.reason : 'Email delivery failed');
+    res.redirect(`/requests/${request.id}?closeoutSendFailed=1`);
   });
 
   app.post('/requests/:id/notify-applicant-outcome', requireRole('admin'), async (req, res) => {
@@ -332,6 +354,12 @@ CCI America Financial Assistance Committee`
     let body;
     let newStatus;
     if (approved) {
+      const paymentMessage = request.payment_confirmed_at
+        ? 'Finance has confirmed payment processing. Please expect payment/support according to the payment details you provided in your application.'
+        : 'Your request has been approved. The finance team is now preparing payment/support according to the payment details you provided in your application. You will receive another update once payment processing is confirmed.';
+      const closeoutMessage = request.payment_confirmed_at
+        ? 'For record-keeping and stewardship purposes, a short close-out form will normally be sent after 3 days. No action is needed right now.'
+        : 'A short close-out form will be sent after payment processing has been confirmed. No action is needed right now.';
       subject = `CCI America financial assistance update: ${request.case_id}`;
       body = `Dear ${request.full_name},
 
@@ -341,9 +369,9 @@ Case ID: ${request.case_id}
 Decision: ${request.decision}
 Approved amount: ${money(request.amount_approved || request.amount_requested)}
 
-Finance has confirmed payment processing. Please expect payment/support according to the payment details you provided in your application.
+${paymentMessage}
 
-For record-keeping and stewardship purposes, a short close-out form will normally be sent after 3 days. No action is needed right now.
+${closeoutMessage}
 
 You may continue to track your request here:
 ${trackingLink}
@@ -363,10 +391,15 @@ Please contact the committee if further clarification is needed.
 CCI America Financial Assistance Committee`;
       newStatus = 'Declined';
     }
-    await sendNotification({ db, requestId: request.id, recipientName: request.full_name, recipientEmail: request.email, subject, body });
-    await db.run('UPDATE requests SET applicant_outcome_notified_at=CURRENT_TIMESTAMP, applicant_outcome_notified_by=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [req.session.user.id, newStatus, request.id]);
-    await logActivity(request.id, req.session.user.id, 'Applicant outcome email sent', approved ? 'Approval/payment notice sent.' : 'Decision notice sent.');
-    res.redirect(`/requests/${request.id}`);
+    const delivery = await sendNotification({ db, requestId: request.id, recipientName: request.full_name, recipientEmail: request.email, subject, body });
+    if (delivery.success) {
+      await db.run('UPDATE requests SET applicant_outcome_notified_at=CURRENT_TIMESTAMP, applicant_outcome_notified_by=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [req.session.user.id, newStatus, request.id]);
+      await logActivity(request.id, req.session.user.id, 'Applicant outcome email sent', approved ? 'Approval/payment notice sent.' : 'Decision notice sent.');
+      return res.redirect(`/requests/${request.id}?applicantOutcome=sent`);
+    }
+
+    await logActivity(request.id, req.session.user.id, 'Applicant outcome email failed', delivery.reason || 'Email delivery failed');
+    res.redirect(`/requests/${request.id}?applicantOutcome=failed`);
   });
 
   app.get('/finance', (req, res) => res.status(404).render('error', { title: 'Not found', message: 'This module has been removed.' }));
