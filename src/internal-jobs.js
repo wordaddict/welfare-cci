@@ -2,9 +2,8 @@ const express = require('express');
 const { getAppConfig } = require('./config');
 const { hasQstashReceiverConfig, verifyQstashSignature } = require('./qstash');
 
-const appConfig = getAppConfig();
-
 async function authorizeInternalJobRequest(req, rawBody, baseUrl) {
+  const appConfig = getAppConfig();
   if (appConfig.jobs.internalJobSecret) {
     const suppliedSecret = req.get('x-internal-job-secret');
     if (suppliedSecret === appConfig.jobs.internalJobSecret) return true;

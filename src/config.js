@@ -83,6 +83,15 @@ const envSchema = z.object({
 
 let cachedConfig;
 
+function formatZodIssues(error) {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path && issue.path.length ? issue.path.join('.') : 'config';
+      return `- ${path}: ${issue.message}`;
+    })
+    .join('\n');
+}
+
 function buildEmailConfig(env) {
   const from = env.FROM_EMAIL || env.MAIL_FROM || 'CCI America Financial Assistance <no-reply@cci.local>';
   const provider = env.RESEND_API_KEY
@@ -151,7 +160,15 @@ function buildJobsConfig(env) {
 
 function getAppConfig() {
   if (cachedConfig) return cachedConfig;
-  const env = envSchema.parse(process.env);
+  let env;
+  try {
+    env = envSchema.parse(process.env);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new Error(`Environment validation failed:\n${formatZodIssues(error)}`);
+    }
+    throw error;
+  }
   cachedConfig = {
     port: env.PORT,
     nodeEnv: env.NODE_ENV,

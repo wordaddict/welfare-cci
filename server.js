@@ -21,7 +21,13 @@ const { createReviewerWorkflow } = require('./src/reviewer-workflow');
 const { appendStoredFileToArchive, getStoredFileByKey, saveUploadedFile, sendStoredFile } = require('./src/storage');
 
 const app = express();
-const appConfig = getAppConfig();
+let appConfig;
+try {
+  appConfig = getAppConfig();
+} catch (error) {
+  console.error('Application configuration failed:', error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 const PORT = appConfig.port;
 
 function baseUrl(req) {
