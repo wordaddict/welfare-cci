@@ -1,49 +1,155 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
-const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
 
-let db;
+let pool;
+let initialized = false;
 
-async function getDb() {
-  if (!db) {
-    const defaultPath = path.join(__dirname, '..', 'db', 'financial_support.sqlite');
-    const databasePath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : defaultPath;
-    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-    db = await open({
-      filename: databasePath,
-      driver: sqlite3.Database
+function getSslConfig() {
+  if (process.env.DATABASE_SSL === 'false') return false;
+  if (process.env.NODE_ENV === 'production') return { rejectUnauthorized: false };
+  return false;
+}
+
+function getPool() {
+  if (!pool) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL must be set. This build now uses PostgreSQL for Heroku-compatible persistence.');
+    }
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: getSslConfig()
     });
-    await db.exec('PRAGMA foreign_keys = ON');
   }
-  return db;
+  return pool;
 }
 
-async function addColumnIfMissing(database, table, column, definition) {
-  const cols = await database.all(`PRAGMA table_info(${table})`);
-  if (!cols.some(c => c.name === column)) {
-    await database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+function getSessionPool() {
+  return getPool();
+}
+
+async function withAdvisoryLock(lockKey, work) {
+  const client = await getPool().connect();
+  try {
+    const lockResult = await client.query('SELECT pg_try_advisory_lock($1) AS locked', [lockKey]);
+    if (!lockResult.rows[0] || !lockResult.rows[0].locked) {
+      return { locked: false };
+    }
+
+    try {
+      const result = await work();
+      return { locked: true, result };
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+    }
+  } finally {
+    client.release();
   }
 }
+
+function normalizeParams(params) {
+  if (params === undefined) return [];
+  if (Array.isArray(params)) return params;
+  return [params];
+}
+
+function replaceQuestionPlaceholders(sql) {
+  let result = '';
+  let index = 1;
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    const prev = i > 0 ? sql[i - 1] : '';
+
+    if (char === "'" && !inDouble && prev !== '\\') {
+      inSingle = !inSingle;
+      result += char;
+      continue;
+    }
+    if (char === '"' && !inSingle && prev !== '\\') {
+      inDouble = !inDouble;
+      result += char;
+      continue;
+    }
+    if (char === '?' && !inSingle && !inDouble) {
+      result += `$${index}`;
+      index += 1;
+      continue;
+    }
+    result += char;
+  }
+
+  return result;
+}
+
+function normalizeSql(sql, { forRun = false } = {}) {
+  let text = String(sql || '').trim();
+  text = text.replace(/\bdatetime\(([^)]+)\)/gi, '($1)');
+
+  if (/^INSERT\s+OR\s+IGNORE\s+INTO\s+/i.test(text)) {
+    text = text.replace(/^INSERT\s+OR\s+IGNORE\s+INTO\s+/i, 'INSERT INTO ');
+    if (!/\bON\s+CONFLICT\b/i.test(text)) text += ' ON CONFLICT DO NOTHING';
+  }
+
+  text = replaceQuestionPlaceholders(text);
+
+  if (forRun && /^INSERT\s+INTO\s+/i.test(text) && !/\bRETURNING\b/i.test(text)) {
+    text += ' RETURNING id';
+  }
+
+  return text;
+}
+
+async function query(sql, params, options = {}) {
+  const database = getPool();
+  const text = normalizeSql(sql, options);
+  return database.query(text, normalizeParams(params));
+}
+
+function createCompatDb() {
+  return {
+    async get(sql, params) {
+      const result = await query(sql, params);
+      return result.rows[0] || undefined;
+    },
+    async all(sql, params) {
+      const result = await query(sql, params);
+      return result.rows;
+    },
+    async run(sql, params) {
+      const result = await query(sql, params, { forRun: true });
+      return {
+        lastID: result.rows[0] ? result.rows[0].id : undefined,
+        changes: result.rowCount
+      };
+    },
+    async exec(sql) {
+      await getPool().query(String(sql));
+    }
+  };
+}
+
+const db = createCompatDb();
 
 async function initDb() {
-  const database = await getDb();
-  await database.exec(`
+  if (initialized) return;
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       reviewer_contact_email TEXT,
       role TEXT NOT NULL CHECK(role IN ('admin','committee','reviewer','applicant')),
       active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       case_id TEXT UNIQUE,
-      applicant_user_id INTEGER,
+      applicant_user_id BIGINT REFERENCES users(id),
       full_name TEXT NOT NULL,
       email TEXT NOT NULL,
       phone TEXT NOT NULL,
@@ -56,9 +162,9 @@ async function initDb() {
       leader_email TEXT,
       leader_phone TEXT,
       leader_verification_token TEXT,
-      leader_verification_sent_at TEXT,
+      leader_verification_sent_at TIMESTAMPTZ,
       tracking_token TEXT,
-      applicant_last_viewed_at TEXT,
+      applicant_last_viewed_at TIMESTAMPTZ,
       connection_duration TEXT NOT NULL,
       membership_status TEXT NOT NULL,
       map_group_status TEXT,
@@ -71,21 +177,21 @@ async function initDb() {
       unit_leader_email TEXT,
       unit_leader_phone TEXT,
       unit_leader_verification_token TEXT,
-      unit_leader_verification_sent_at TEXT,
+      unit_leader_verification_sent_at TIMESTAMPTZ,
       unit_leader_verified TEXT NOT NULL DEFAULT 'Not Required',
       pastor_informed TEXT,
       request_category TEXT NOT NULL,
-      amount_requested REAL NOT NULL,
-      total_amount_needed REAL,
-      due_date TEXT,
+      amount_requested DOUBLE PRECISION NOT NULL,
+      total_amount_needed DOUBLE PRECISION,
+      due_date DATE,
       situation TEXT NOT NULL,
       consequence TEXT NOT NULL,
       one_time_or_ongoing TEXT NOT NULL,
       prior_assistance TEXT NOT NULL,
       prior_assistance_details TEXT,
       applicant_effort TEXT,
-      applicant_contribution REAL NOT NULL DEFAULT 0,
-      other_confirmed_support REAL NOT NULL DEFAULT 0,
+      applicant_contribution DOUBLE PRECISION NOT NULL DEFAULT 0,
+      other_confirmed_support DOUBLE PRECISION NOT NULL DEFAULT 0,
       dependents_affected TEXT,
       effort_actions TEXT,
       direct_payment_possible TEXT NOT NULL,
@@ -101,53 +207,68 @@ async function initDb() {
       status TEXT NOT NULL DEFAULT 'New Request',
       urgency TEXT NOT NULL DEFAULT 'Standard',
       urgency_reason TEXT,
-      urgency_override_by INTEGER,
-      urgency_override_at TEXT,
-      assigned_reviewer_1 INTEGER,
-      assigned_reviewer_2 INTEGER,
-      reviewer_1_notified_at TEXT,
-      reviewer_2_notified_at TEXT,
+      urgency_override_by BIGINT,
+      urgency_override_at TIMESTAMPTZ,
+      assigned_reviewer_1 BIGINT REFERENCES users(id),
+      assigned_reviewer_2 BIGINT REFERENCES users(id),
+      reviewer_1_notified_at TIMESTAMPTZ,
+      reviewer_2_notified_at TIMESTAMPTZ,
       leader_verified TEXT NOT NULL DEFAULT 'Pending',
       documents_complete TEXT NOT NULL DEFAULT 'Pending',
       decision TEXT,
-      amount_approved REAL,
+      amount_approved DOUBLE PRECISION,
       decision_notes TEXT,
       pastorate_required TEXT NOT NULL DEFAULT 'No',
       pastorate_decision TEXT,
       follow_up_needed TEXT NOT NULL DEFAULT 'No',
       finance_confirm_token TEXT,
-      finance_packet_sent_at TEXT,
-      payment_confirmed_at TEXT,
+      finance_packet_sent_at TIMESTAMPTZ,
+      payment_confirmed_at TIMESTAMPTZ,
       payment_confirmed_by TEXT,
-      payment_confirmation_amount REAL,
+      payment_confirmation_amount DOUBLE PRECISION,
       payment_confirmation_method TEXT,
       payment_confirmation_reference TEXT,
       payment_confirmation_notes TEXT,
       payment_confirmation_file TEXT,
-      applicant_outcome_notified_at TEXT,
-      applicant_outcome_notified_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(assigned_reviewer_1) REFERENCES users(id),
-      FOREIGN KEY(assigned_reviewer_2) REFERENCES users(id),
-      FOREIGN KEY(applicant_user_id) REFERENCES users(id)
+      applicant_outcome_notified_at TIMESTAMPTZ,
+      applicant_outcome_notified_by BIGINT,
+      applicant_payment_notified_at TIMESTAMPTZ,
+      applicant_followup_requested_at TIMESTAMPTZ,
+      applicant_followup_reminder_sent_at TIMESTAMPTZ,
+      applicant_followup_reminder_count INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS stored_files (
+      id BIGSERIAL PRIMARY KEY,
+      storage_key TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL DEFAULT 'database',
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      data BYTEA,
+      cloud_public_id TEXT,
+      cloud_resource_type TEXT,
+      cloud_version INTEGER,
+      secure_url TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
       original_name TEXT NOT NULL,
       stored_name TEXT NOT NULL,
       mime_type TEXT NOT NULL,
       size_bytes INTEGER NOT NULL,
       document_type TEXT NOT NULL DEFAULT 'Supporting document',
-      uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS leadership_verifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
       verifier_name TEXT NOT NULL,
       verifier_email TEXT NOT NULL,
       verifier_phone TEXT NOT NULL,
@@ -157,14 +278,13 @@ async function initDb() {
       service_duration_value INTEGER NOT NULL,
       service_duration_unit TEXT NOT NULL,
       comments TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS leader_verifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
-      verified_by INTEGER,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+      verified_by BIGINT REFERENCES users(id),
       verifier_name TEXT,
       verifier_email TEXT,
       verifier_phone TEXT,
@@ -179,15 +299,13 @@ async function initDb() {
       known_duration_value INTEGER,
       known_duration_unit TEXT,
       decision_comments TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
-      FOREIGN KEY(verified_by) REFERENCES users(id)
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS reviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
-      reviewer_id INTEGER NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+      reviewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       conflict_of_interest TEXT NOT NULL,
       eligibility_rating INTEGER,
       urgency_rating INTEGER,
@@ -202,60 +320,53 @@ async function initDb() {
       system_assessment_json TEXT,
       system_assessment_agreement TEXT,
       override_reason TEXT,
-      actual_gap REAL,
+      actual_gap DOUBLE PRECISION,
       recommended_decision TEXT NOT NULL,
-      recommended_amount REAL,
+      recommended_amount DOUBLE PRECISION,
       notes TEXT,
       submitted_by_applicant INTEGER DEFAULT 0,
       receipt_file TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(request_id, reviewer_id),
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
-      FOREIGN KEY(reviewer_id) REFERENCES users(id)
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(request_id, reviewer_id)
     );
 
     CREATE TABLE IF NOT EXISTS request_reviewers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
-      reviewer_id INTEGER NOT NULL,
-      assigned_by INTEGER,
-      assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      notified_at TEXT,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+      reviewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assigned_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      notified_at TIMESTAMPTZ,
       invite_token TEXT UNIQUE,
-      accepted_at TEXT,
-      declined_at TEXT,
+      accepted_at TIMESTAMPTZ,
+      declined_at TIMESTAMPTZ,
       review_token TEXT UNIQUE,
-      review_token_sent_at TEXT,
-      review_submitted_at TEXT,
-      reminder_sent_at TEXT,
-      expired_at TEXT,
-      UNIQUE(request_id, reviewer_id),
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
-      FOREIGN KEY(reviewer_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY(assigned_by) REFERENCES users(id) ON DELETE SET NULL
+      review_token_sent_at TIMESTAMPTZ,
+      review_submitted_at TIMESTAMPTZ,
+      reminder_sent_at TIMESTAMPTZ,
+      expired_at TIMESTAMPTZ,
+      UNIQUE(request_id, reviewer_id)
     );
 
     CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL UNIQUE,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL UNIQUE REFERENCES requests(id) ON DELETE CASCADE,
       payment_method TEXT NOT NULL,
       payee_name TEXT NOT NULL,
       payee_contact TEXT,
-      amount_paid REAL NOT NULL,
+      amount_paid DOUBLE PRECISION NOT NULL,
       payment_date TEXT NOT NULL,
       confirmation_note TEXT,
       confirmation_file TEXT,
-      processed_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
-      FOREIGN KEY(processed_by) REFERENCES users(id)
+      processed_by BIGINT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS followups (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER NOT NULL,
-      completed_by INTEGER NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+      completed_by BIGINT NOT NULL REFERENCES users(id),
       funds_used_as_intended TEXT,
       issue_resolved TEXT,
       receipt_received TEXT,
@@ -263,125 +374,59 @@ async function initDb() {
       notes TEXT,
       submitted_by_applicant INTEGER DEFAULT 0,
       receipt_file TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
-      FOREIGN KEY(completed_by) REFERENCES users(id)
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT REFERENCES requests(id) ON DELETE SET NULL,
       recipient_name TEXT,
       recipient_email TEXT NOT NULL,
       subject TEXT NOT NULL,
       body TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Queued',
+      provider TEXT,
+      provider_message_id TEXT,
       error TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      sent_at TEXT,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      sent_at TIMESTAMPTZ
     );
 
     CREATE TABLE IF NOT EXISTS activity_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      request_id INTEGER,
-      user_id INTEGER,
+      id BIGSERIAL PRIMARY KEY,
+      request_id BIGINT REFERENCES requests(id) ON DELETE SET NULL,
+      user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
       action TEXT NOT NULL,
       details TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE SET NULL,
-      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-  `);
 
-  await addColumnIfMissing(database, 'users', 'reviewer_contact_email', 'TEXT');
-
-  await addColumnIfMissing(database, 'requests', 'applicant_user_id', 'INTEGER');
-  await addColumnIfMissing(database, 'requests', 'applicant_effort', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_contribution', 'REAL DEFAULT 0');
-  await addColumnIfMissing(database, 'requests', 'other_confirmed_support', 'REAL DEFAULT 0');
-  await addColumnIfMissing(database, 'requests', 'dependents_affected', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'effort_actions', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'leader_email', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'leader_phone', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'leader_verification_token', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'leader_verification_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'tracking_token', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_last_viewed_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'reviewer_1_notified_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'reviewer_2_notified_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'urgency_reason', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'urgency_override_by', 'INTEGER');
-  await addColumnIfMissing(database, 'requests', 'urgency_override_at', 'TEXT');
-
-  await addColumnIfMissing(database, 'requests', 'map_group_status', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'map_group_name', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'worker_status', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'worker_duration_value', 'INTEGER');
-  await addColumnIfMissing(database, 'requests', 'worker_duration_unit', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_name', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_name', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_email', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_phone', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_verification_token', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_verification_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'unit_leader_verified', "TEXT DEFAULT 'Not Required'");
-  await addColumnIfMissing(database, 'requests', 'pastor_informed', 'TEXT');
-  await addColumnIfMissing(database, 'documents', 'document_type', "TEXT DEFAULT 'Supporting document'");
-
-  await addColumnIfMissing(database, 'requests', 'finance_confirm_token', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'finance_packet_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmed_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmed_by', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmation_amount', 'REAL');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmation_method', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmation_reference', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmation_notes', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'payment_confirmation_file', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'zelle_name', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'zelle_email', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'zelle_phone', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_outcome_notified_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_outcome_notified_by', 'INTEGER');
-
-  await addColumnIfMissing(database, 'requests', 'applicant_payment_notified_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_followup_requested_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_followup_reminder_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'requests', 'applicant_followup_reminder_count', 'INTEGER DEFAULT 0');
-  await addColumnIfMissing(database, 'leader_verifications', 'verifier_name', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'verifier_email', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'verifier_phone', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'support_letter_file', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'member_confirmed', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'worker_confirmed', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'known_duration_value', 'INTEGER');
-  await addColumnIfMissing(database, 'leader_verifications', 'known_duration_unit', 'TEXT');
-  await addColumnIfMissing(database, 'leader_verifications', 'decision_comments', 'TEXT');
-  await addColumnIfMissing(database, 'reviews', 'score_total', 'INTEGER');
-  await addColumnIfMissing(database, 'reviews', 'system_score_total', 'INTEGER');
-  await addColumnIfMissing(database, 'reviews', 'system_assessment_json', 'TEXT');
-  await addColumnIfMissing(database, 'reviews', 'system_assessment_agreement', 'TEXT');
-  await addColumnIfMissing(database, 'reviews', 'override_reason', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'invite_token', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'accepted_at', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'declined_at', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'review_token', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'review_token_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'review_submitted_at', 'TEXT');
-
-  await addColumnIfMissing(database, 'request_reviewers', 'reminder_sent_at', 'TEXT');
-  await addColumnIfMissing(database, 'request_reviewers', 'expired_at', 'TEXT');
-  await addColumnIfMissing(database, 'followups', 'submitted_by_applicant', 'INTEGER DEFAULT 0');
-  await addColumnIfMissing(database, 'followups', 'receipt_file', 'TEXT');
-
-  await database.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_request_reviewers_review_token ON request_reviewers(review_token) WHERE review_token IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewer_contact_email ON users(lower(reviewer_contact_email)) WHERE role='reviewer' AND reviewer_contact_email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_request_reviewers_review_token ON request_reviewers(review_token);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_reviewer_contact_email ON users ((lower(reviewer_contact_email))) WHERE role='reviewer' AND reviewer_contact_email IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
     CREATE INDEX IF NOT EXISTS idx_requests_applicant_user ON requests(applicant_user_id);
     CREATE INDEX IF NOT EXISTS idx_request_reviewers_request ON request_reviewers(request_id);
     CREATE INDEX IF NOT EXISTS idx_reviews_request ON reviews(request_id);
+    CREATE INDEX IF NOT EXISTS idx_documents_stored_name ON documents(stored_name);
+    CREATE INDEX IF NOT EXISTS idx_stored_files_storage_key ON stored_files(storage_key);
+
+    ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'database';
+    ALTER TABLE stored_files ALTER COLUMN data DROP NOT NULL;
+    ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS cloud_public_id TEXT;
+    ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS cloud_resource_type TEXT;
+    ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS cloud_version INTEGER;
+    ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS secure_url TEXT;
+
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS provider TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
   `);
+
+  initialized = true;
+}
+
+async function getDb() {
+  await initDb();
+  return db;
 }
 
 async function logActivity(requestId, userId, action, details = '') {
@@ -392,4 +437,4 @@ async function logActivity(requestId, userId, action, details = '') {
   );
 }
 
-module.exports = { getDb, initDb, logActivity };
+module.exports = { getDb, getSessionPool, initDb, logActivity, withAdvisoryLock };

@@ -1,18 +1,142 @@
-# Online Deployment Guide
+# Hosted Deployment Guide
 
-## Recommended first deployment: Render with a persistent disk
+This app now supports a deployment shape much closer to `cci`:
 
-This app is a Node.js/Express application using SQLite and local uploaded files. Therefore the hosting service must provide a persistent disk/volume.
+- PostgreSQL for application data
+- Postgres-backed sessions
+- Cloudinary for external file storage when configured
+- Resend for production email when configured
+- optional QStash-driven scheduler webhooks
 
-A `render.yaml` file is included as a starting point.
+It still works without Cloudinary or QStash, but those are the preferred production services.
 
-### 1. Put the project on GitHub
+## 1. Create the app
 
-Create a **private** GitHub repository and push this project. The included `.gitignore` excludes `.env`, databases, uploaded evidence, and `node_modules`.
+Example for Heroku:
 
-### 2. Create the web service
+```text
+heroku create your-app-name
+```
 
-Connect the GitHub repository to your hosting provider. For Render you can use the included Blueprint or create a Node web service manually.
+## 2. Add Postgres
+
+```text
+heroku addons:create heroku-postgresql:essential-0
+```
+
+Heroku will set `DATABASE_URL` automatically.
+
+## 3. Configure file storage
+
+Recommended, closer to `cci`:
+
+```text
+CLOUDINARY_CLOUD_NAME=<cloud-name>
+CLOUDINARY_API_KEY=<api-key>
+CLOUDINARY_API_SECRET=<api-secret>
+CLOUDINARY_FOLDER_PREFIX=cci-welfare
+```
+
+If Cloudinary is not configured, uploaded evidence falls back to PostgreSQL-backed storage.
+
+## 4. Configure email
+
+Recommended, closer to `cci`:
+
+```text
+RESEND_API_KEY=<resend-api-key>
+FROM_EMAIL="CCI America Financial Assistance <no-reply@your-domain>"
+```
+
+Fallback options:
+
+```text
+SENDGRID_API_KEY=<sendgrid-api-key>
+```
+
+or
+
+```text
+SMTP_HOST=<smtp-host>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<smtp-user>
+SMTP_PASS=<smtp-password>
+MAIL_FROM="CCI America Financial Assistance <no-reply@your-domain>"
+```
+
+## 5. Set required config vars
+
+```text
+heroku config:set NODE_ENV=production
+heroku config:set APP_BASE_URL=https://your-app-name.herokuapp.com
+heroku config:set SESSION_SECRET=<long-random-secret>
+heroku config:set ADMIN_BOOTSTRAP_NAME="CCI Welfare Admin"
+heroku config:set ADMIN_BOOTSTRAP_EMAIL=<admin-email>
+heroku config:set ADMIN_BOOTSTRAP_PASSWORD=<strong-password-12+-characters>
+heroku config:set ADMIN_EMAIL=<admin-notification-email>
+heroku config:set FINANCE_TEAM_NAME="CCI USA Finance Team"
+heroku config:set FINANCE_TEAM_EMAIL=<finance-email>
+heroku config:set AUTO_ASSIGN_REVIEWERS=false
+```
+
+## 6. Choose a scheduler mode
+
+### Option A: In-process scheduler
+
+Simplest setup:
+
+```text
+heroku config:set RUN_SCHEDULERS=true
+```
+
+Optional intervals:
+
+```text
+heroku config:set REVIEWER_SWEEP_INTERVAL_MINUTES=15
+heroku config:set CLOSEOUT_SWEEP_INTERVAL_MINUTES=60
+heroku config:set FOLLOWUP_CLOSEOUT_DELAY_DAYS=3
+heroku config:set FOLLOWUP_REMINDER_INTERVAL_DAYS=7
+```
+
+### Option B: QStash scheduler
+
+Set:
+
+```text
+QSTASH_TOKEN=<qstash-token>
+QSTASH_CURRENT_SIGNING_KEY=<current-signing-key>
+QSTASH_NEXT_SIGNING_KEY=<next-signing-key>
+RUN_SCHEDULERS=false
+```
+
+Then configure schedules:
+
+```text
+npm run qstash:setup-jobs
+```
+
+### Option C: External scheduler / manual webhooks
+
+Set:
+
+```text
+RUN_SCHEDULERS=false
+INTERNAL_JOB_SECRET=<shared-secret>
+```
+
+Then trigger:
+
+- `POST /internal/jobs/reviewer-sweep`
+- `POST /internal/jobs/closeout-sweep`
+
+with header:
+
+```text
+X-Internal-Job-Secret: <shared-secret>
+```
+
+## 7. Deploy
 
 Build command:
 
@@ -26,79 +150,39 @@ Start command:
 npm start
 ```
 
-Health check:
+The included `Procfile` already uses `npm start`.
+
+## 8. Seed local-only demo users if needed
+
+For a new production app, rely on the bootstrap admin env vars instead of seeded local credentials.
+
+For local development:
 
 ```text
-/health
+npm run seed
 ```
 
-### 3. Attach persistent storage
+## 9. Verify before go-live
 
-Mount a persistent disk, for example at:
+Test all of these with dummy data:
 
-```text
-/var/data
-```
-
-Then configure:
-
-```text
-DATABASE_PATH=/var/data/financial_support.sqlite
-SESSION_DIR=/var/data/sessions
-UPLOAD_DIR=/var/data/uploads
-```
-
-Without persistent storage, application records and uploaded documents can disappear after a redeploy/restart.
-
-### 4. Set production environment variables
-
-At minimum:
-
-```text
-NODE_ENV=production
-SESSION_SECRET=<long-random-secret>
-APP_BASE_URL=https://your-real-domain.example
-ADMIN_BOOTSTRAP_NAME=CCI Welfare Admin
-ADMIN_BOOTSTRAP_EMAIL=<admin-email>
-ADMIN_BOOTSTRAP_PASSWORD=<strong-password-12+-characters>
-ADMIN_EMAIL=<admin-notification-email>
-FINANCE_TEAM_NAME=CCI USA Finance Team
-FINANCE_TEAM_EMAIL=<finance-email>
-AUTO_ASSIGN_REVIEWERS=false
-```
-
-Configure SMTP as well:
-
-```text
-SMTP_HOST=<smtp-host>
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=<smtp-user>
-SMTP_PASS=<smtp-password-or-app-password>
-MAIL_FROM=CCI America Financial Assistance <no-reply@your-domain>
-```
-
-### 5. Verify before accepting real applications
-
-Test all of these using non-sensitive dummy information:
-
-1. Applicant registration/login.
-2. Application submission and document upload.
+1. Applicant registration and login.
+2. Application submission with file uploads.
 3. Unit Head verification for a Celeforce applicant.
 4. Pastoral verification.
-5. Admin adds reviewers and assigns two reviewers.
-6. Reviewer receives invite.
-7. Reviewer accepts invite.
-8. Separate review link arrives.
-9. Reviewer can open documents only through the secure review link.
-10. Reviewer submits review.
-11. Two completed reviews appear for Admin.
-12. Admin records decision.
-13. Finance receives packet and secure payment-confirmation link.
-14. Finance confirms payment.
-15. Applicant receives support-processed email and Decision turns complete/green in tracking.
-16. Admin can send close-out immediately, or wait for the automated 3-day close-out request.
+5. Reviewer assignment from Admin.
+6. Reviewer invite delivery.
+7. Reviewer acceptance and secure review link.
+8. Reviewer access to uploaded evidence.
+9. Reviewer submission.
+10. Admin decision recording.
+11. Finance packet email.
+12. Finance confirmation flow.
+13. Applicant payment notification.
+14. Automated or webhook-triggered follow-up workflow.
 
-## SQLite production note
+## Notes
 
-SQLite is suitable for a modest internal workflow when the app runs as one web-service instance and the database lives on persistent storage. If usage grows substantially or you plan to run multiple application instances, migrate the database layer to PostgreSQL before scaling horizontally.
+- Heroku’s filesystem is ephemeral, so local-disk uploads are no longer part of the deployment plan.
+- Keep using `DATABASE_URL` instead of copying static credentials.
+- If you run more than one process or dyno type, make sure only one scheduler mode is active at a time.

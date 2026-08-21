@@ -1,6 +1,17 @@
 # CCI America Financial Assistance App - v36work
 
-This build keeps the v35 welfare workflow and changes reviewer access for real-world online use.
+This build keeps the welfare workflow and now leans much closer to the production shape of `cci`: PostgreSQL, external-ready file storage, production email delivery, and scheduler hooks for hosted jobs.
+
+## Stack
+
+- Node.js
+- Express
+- EJS
+- PostgreSQL
+- Postgres-backed sessions
+- Cloudinary-ready file storage with database fallback
+- Resend-ready email delivery with SMTP fallback
+- Optional QStash-backed scheduled jobs
 
 ## Access model
 
@@ -9,7 +20,7 @@ Only two roles use password login:
 - Applicant
 - Admin
 
-The following roles do **not** log in:
+The following roles do not log in:
 
 - Reviewer
 - Pastor
@@ -17,76 +28,98 @@ The following roles do **not** log in:
 - Celeforce Unit Head
 - Finance contact
 
-They receive secure, case-specific links by email. Reviewer contact emails are stored separately from login identities, so the same real email can also belong to an Applicant/Admin account.
-
-## Reviewer workflow
-
-1. Admin adds reviewer name/email under **Admin > Reviewers**.
-2. Admin opens a case and assigns up to two reviewers.
-3. Once pastoral verification is complete, each assigned reviewer receives an invitation link.
-4. The invitation page shows only limited case information.
-5. If the reviewer accepts, the system generates a different secure token and emails a second review link.
-6. The second link opens the confidential reviewer workspace. No account/password is required.
-7. After the reviewer submits, the review link stops exposing case materials and displays a submission confirmation.
-8. Admin sees reviewer invitation, acceptance, review-link, and submission status in the case file.
-
-By default `AUTO_ASSIGN_REVIEWERS=false`, so Admin controls reviewer selection. Set it to `true` only if you want the old automatic fill/replacement behavior.
+They receive secure, case-specific email links.
 
 ## Local setup
 
 ```bash
-cp .env.example .env
+cp .env.local.example .env
 npm install
+npm run env:check
 npm run seed
 npm start
 ```
 
-Open:
+Open `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
-
-Local test accounts created by `npm run seed`:
+Local demo accounts created by `npm run seed`:
 
 - Admin: `admin@cci.local` / `admin123`
 - Applicant: `applicant@cci.local` / `applicant123`
 
-No reviewer login accounts are seeded.
-
 ## Production hosting
 
-See `DEPLOYMENT.md` before going live.
+See [DEPLOYMENT.md](/Users/michealadeyinka/Downloads/v36work/DEPLOYMENT.md) for the hosted setup.
 
-The app supports persistent paths through:
+Useful env profiles:
 
-- `DATABASE_PATH`
-- `SESSION_DIR`
-- `UPLOAD_DIR`
+- [`.env.local.example`](/Users/michealadeyinka/Downloads/v36work/.env.local.example) for local development
+- [`.env.production.example`](/Users/michealadeyinka/Downloads/v36work/.env.production.example) for hosted setup
+- [`.env.example`](/Users/michealadeyinka/Downloads/v36work/.env.example) as the full reference sheet
 
-This is essential because the app stores SQLite data and uploaded evidence. Do not deploy it to an ephemeral filesystem without a persistent disk/volume.
+Required production pieces:
+
+- `DATABASE_URL`
+- `SESSION_SECRET`
+- `APP_BASE_URL`
+- email delivery through `RESEND_API_KEY`, `SENDGRID_API_KEY`, or `SMTP_*`
+
+Recommended production pieces:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
+Optional production scheduler pieces:
+
+- `RUN_SCHEDULERS=true` for in-process scheduling
+- or `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`
+- or `INTERNAL_JOB_SECRET` for authenticated external job calls
+
+You can validate your current env at any time with:
+
+```bash
+npm run env:check
+```
 
 ## Email
 
-For local use, leave `SMTP_HOST` blank and email previews will print in Terminal.
+For local use, leave Resend/SMTP unset and email previews will print in Terminal.
 
-For production, configure the SMTP variables in `.env.example`. Real email is required for the link-based reviewer, pastoral, leadership, finance, and close-out workflows.
+For production, configure either:
+
+- `RESEND_API_KEY` with `FROM_EMAIL`
+- or `SENDGRID_API_KEY`
+- or `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`
+
+## Files
+
+If Cloudinary is configured, uploads are stored there and streamed back through the app’s authorized routes.
+
+If Cloudinary is not configured, uploads fall back to PostgreSQL-backed storage so Heroku deployments still work.
+
+## Background jobs
+
+The app supports:
+
+- in-process schedulers for reviewer sweeps and close-out reminders
+- internal webhook endpoints at `/internal/jobs/reviewer-sweep` and `/internal/jobs/closeout-sweep`
+- optional QStash schedule setup via `npm run qstash:setup-jobs`
 
 ## Production Admin account
 
-On a fresh hosted database, set:
+On a fresh database, set:
 
 - `ADMIN_BOOTSTRAP_NAME`
 - `ADMIN_BOOTSTRAP_EMAIL`
 - `ADMIN_BOOTSTRAP_PASSWORD`
 
-The bootstrap password must be at least 12 characters. The bootstrap is used only when no active Admin account exists.
+The bootstrap password must be at least 12 characters.
 
 ## Important security notes
 
-- Never commit `.env`, the SQLite database, uploaded evidence, or session files to GitHub.
+- Never commit `.env`.
 - Use HTTPS in production.
 - Use a long random `SESSION_SECRET`.
-- Reviewer links are confidential bearer links. They should not be forwarded.
-- Uploaded evidence is not served from a public static directory. Admin uses authenticated access; reviewers use their active case-specific review token.
-# welfare-cci
+- Reviewer links are confidential bearer links and should not be forwarded.
+- Uploaded evidence is not publicly exposed; Admin access requires authentication and reviewer access requires a live case-specific token.

@@ -9,6 +9,12 @@ function escapeCsv(value) {
   return str;
 }
 
+function normalizeMultiValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
+  if (value === null || value === undefined || value === '') return [];
+  return [String(value).trim()].filter(Boolean);
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.redirect('/login');
   next();
@@ -118,4 +124,4 @@ async function generateCaseId(db) {
   return `CCI-FIN-${year}-${String((row.count || 0) + 1).padStart(3, '0')}`;
 }
 
-module.exports = { money, escapeCsv, requireAuth, requireRole, parseCategoryDetails, calculateUrgency, calculateUrgencyResult, generateCaseId };
+module.exports = { money, escapeCsv, normalizeMultiValue, requireAuth, requireRole, parseCategoryDetails, calculateUrgency, calculateUrgencyResult, generateCaseId };
