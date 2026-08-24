@@ -422,6 +422,7 @@ body{
 }
 .status-pill.success{background:#F0FFF6;color:#087A3D;border-color:#BFEFD2;}
 .status-pill.warning{background:#FFF8E8;color:#9A6500;border-color:#F6D89B;}
+.status-pill.danger{background:#FFF1F0;color:#B42318;border-color:#FDA29B;}
 .mini-heading{
   font-size:1.05rem;
   letter-spacing:.08em;

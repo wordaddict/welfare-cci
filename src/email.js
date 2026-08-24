@@ -56,12 +56,22 @@ function buildDefaultHtml({ subject, recipientName, text }) {
 }
 
 function mapResendAttachments(attachments = []) {
-  return attachments.map((attachment) => ({
-    filename: attachment.filename,
-    content: attachment.content,
-    path: attachment.path,
-    content_type: attachment.contentType
-  }));
+  return attachments.map((attachment) => {
+    const mapped = {
+      filename: attachment.filename,
+      path: attachment.path,
+      content_type: attachment.contentType,
+      content_id: attachment.contentId
+    };
+
+    if (attachment.content !== undefined) {
+      mapped.content = Buffer.isBuffer(attachment.content)
+        ? attachment.content.toString('base64')
+        : attachment.content;
+    }
+
+    return mapped;
+  });
 }
 
 function mapNodemailerAttachments(attachments = []) {

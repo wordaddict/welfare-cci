@@ -291,10 +291,19 @@ CCI America Financial Assistance Committee`;
       recipientEmail: financeEmail,
       subject,
       body,
-      attachments: [{ filename: `${request.case_id}-finance-submission-package.zip`, content: packetBuffer }]
+      attachments: [{
+        filename: `${request.case_id}-finance-submission-package.zip`,
+        content: packetBuffer,
+        contentType: 'application/zip'
+      }]
     });
     if (!delivery.success) {
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${delivery.reason || 'Email delivery failed'}`);
+      return delivery;
+    }
+
+    if (delivery.preview) {
+      await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet previewed', `Previewed locally for ${financeEmail} with committee decision: ${request.decision}`);
       return delivery;
     }
 

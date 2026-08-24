@@ -1,7 +1,23 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
+const { getAppConfig } = require('../config');
 const { validateReviewSubmission } = require('../validators/review-validator');
+
+function financePacketRedirectState(delivery) {
+  if (!delivery || !delivery.success) return 'failed';
+  if (delivery.preview) return 'previewed';
+  return 'sent';
+}
+
+function financePacketStateForView(request, financeNotification) {
+  if (request.finance_packet_sent_at) return 'sent';
+  if (!financeNotification) return request.decision ? 'pending' : 'not-started';
+  if (financeNotification.status === 'Previewed') return 'previewed';
+  if (financeNotification.status === 'Failed') return 'failed';
+  if (financeNotification.status === 'Sent') return 'sent';
+  return 'pending';
+}
 
 function mountAdminRoutes(app, {
   baseUrl,
@@ -102,6 +118,15 @@ function mountAdminRoutes(app, {
     const leadershipVerifications = await db.all('SELECT * FROM leadership_verifications WHERE request_id=? ORDER BY created_at DESC', req.params.id);
     const logs = await db.all('SELECT l.*, u.name as user_name FROM activity_logs l LEFT JOIN users u ON u.id=l.user_id WHERE l.request_id=? ORDER BY l.created_at DESC', req.params.id);
     const applicantFollowup = await db.get('SELECT * FROM followups WHERE request_id=? AND submitted_by_applicant=1 ORDER BY created_at DESC LIMIT 1', req.params.id);
+    const financeNotification = request.decision
+      ? await db.get(
+          `SELECT * FROM notifications
+           WHERE request_id=? AND subject LIKE ?
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [req.params.id, 'CCI America Committee Decision:%']
+        )
+      : null;
     res.render('request-detail', {
       title: request.case_id,
       request,
@@ -113,6 +138,14 @@ function mountAdminRoutes(app, {
       leadershipVerifications,
       logs,
       applicantFollowup,
+      financeNotification,
+      financePacketState: financePacketStateForView(request, financeNotification),
+      financeTeamEmail: getAppConfig().jobs.financeTeamEmail,
+      flash: {
+        decisionRecorded: req.query.decisionRecorded === '1',
+        financePacket: req.query.financePacket || '',
+        applicantOutcome: req.query.applicantOutcome || ''
+      },
       reviewSummary: reviewScoreSummary(reviews),
       categoryDetails: JSON.parse(request.category_details || '{}')
     });
@@ -319,8 +352,20 @@ CCI America Financial Assistance Committee`
       }
     }
 
-    const financePacketQuery = financePacketDelivery && financePacketDelivery.success ? 'sent' : 'failed';
+    const financePacketQuery = financePacketRedirectState(financePacketDelivery);
     res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=${financePacketQuery}&applicantOutcome=${applicantOutcomeQuery}`);
+  });
+
+  app.post('/requests/:id/send-finance-packet', requireRole('admin'), async (req, res) => {
+    const db = await getDb();
+    const request = await db.get('SELECT id, decision FROM requests WHERE id=?', req.params.id);
+    if (!request) return res.status(404).render('error', { title: 'Not found', message: 'Request not found.' });
+    if (!request.decision) {
+      return res.redirect(`/requests/${req.params.id}?financePacket=missing-decision`);
+    }
+
+    const delivery = await emailFinanceDecisionPacket(db, req, req.params.id);
+    return res.redirect(`/requests/${req.params.id}?financePacket=${financePacketRedirectState(delivery)}`);
   });
 
   app.post('/requests/:id/send-closeout-now', requireRole('admin'), async (req, res) => {

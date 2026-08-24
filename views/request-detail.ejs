@@ -348,18 +348,49 @@
   <% }) %>
 </section>
 
+<%
+  const financePacketStatusLabel = financePacketState === 'sent'
+    ? 'Sent'
+    : financePacketState === 'previewed'
+      ? 'Previewed locally'
+      : financePacketState === 'failed'
+        ? 'Failed'
+        : 'Not sent yet';
+%>
+
 <section class="card panel-card final-decision-card">
   <h2>Final Committee Decision</h2>
   <% if (request.decision) { %>
-    <div class="success-panel decision-recorded-panel">
-      <h3>Final decision recorded</h3>
-      <p>The final committee decision has been recorded and the official finance packet email has been sent to the CCI USA Finance Team.</p>
-    </div>
+    <% if (financePacketState === 'failed') { %>
+      <div class="alert">
+        <b>Final decision recorded, but the finance packet email failed.</b>
+        <% if (financeNotification && financeNotification.error) { %>
+          <span> <%= financeNotification.error %></span>
+        <% } %>
+      </div>
+    <% } else if (financePacketState === 'previewed') { %>
+      <div class="success-panel decision-recorded-panel">
+        <h3>Final decision recorded</h3>
+        <p>The finance packet was previewed locally for <%= financeTeamEmail %>. This environment is not sending a live finance email yet.</p>
+      </div>
+    <% } else if (financePacketState === 'sent') { %>
+      <div class="success-panel decision-recorded-panel">
+        <h3>Final decision recorded</h3>
+        <p>The official finance packet email was sent to <%= financeNotification ? financeNotification.recipient_email : financeTeamEmail %>.</p>
+      </div>
+    <% } else { %>
+      <div class="success-panel decision-recorded-panel">
+        <h3>Final decision recorded</h3>
+        <p>The final committee decision has been saved. The finance packet still needs to be emailed to <%= financeTeamEmail %>.</p>
+      </div>
+    <% } %>
     <div class="info-grid compact">
       <div><span>Decision</span><strong><%= request.decision %></strong></div>
       <div><span>Amount approved</span><strong><%= request.amount_approved ? money(request.amount_approved) : 'Pending / N/A' %></strong></div>
       <div><span>Documents complete?</span><strong><%= request.documents_complete || 'Pending' %></strong></div>
-      <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || 'Queued / previewed locally' %></strong></div>
+      <div><span>Finance email status</span><strong><%= financePacketStatusLabel %></strong></div>
+      <div><span>Finance recipient</span><strong><%= financeNotification ? financeNotification.recipient_email : financeTeamEmail %></strong></div>
+      <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || (financePacketState === 'previewed' ? 'Previewed locally' : financePacketState === 'failed' ? 'Failed' : 'Not sent yet') %></strong></div>
     </div>
     <% if (request.decision_notes) { %>
       <div class="leader-text-block"><span>Decision notes</span><p><%= request.decision_notes %></p></div>
@@ -380,8 +411,12 @@
       <p class="eyebrow dark">Finance handoff</p>
       <h2>Finance Packet & Payment Confirmation</h2>
     </div>
-    <% if (request.finance_packet_sent_at) { %>
+    <% if (financePacketState === 'sent') { %>
       <span class="status-pill success">Packet emailed</span>
+    <% } else if (financePacketState === 'previewed') { %>
+      <span class="status-pill warning">Preview only</span>
+    <% } else if (financePacketState === 'failed') { %>
+      <span class="status-pill danger">Email failed</span>
     <% } else { %>
       <span class="status-pill warning">Not yet emailed</span>
     <% } %>
@@ -389,14 +424,32 @@
 
   <p class="muted">After the final committee decision is recorded, the app emails the finance packet and evidence to the CCI USA Finance Team. If the request is approved, finance uses the secure confirmation link to confirm payment.</p>
 
+  <% if (flash.financePacket === 'missing-decision') { %>
+    <div class="alert"><b>Record the final committee decision before sending the finance packet.</b></div>
+  <% } %>
+  <% if (financePacketState === 'failed' && financeNotification && financeNotification.error) { %>
+    <div class="alert"><b>Last finance email error:</b> <%= financeNotification.error %></div>
+  <% } %>
+  <% if (financePacketState === 'previewed') { %>
+    <div class="note"><b>Preview mode:</b> no live email provider is being used in this environment, so the packet was rendered locally instead of being sent to Finance.</div>
+  <% } %>
+
   <div class="info-grid compact">
-    <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || 'Not sent yet' %></strong></div>
+    <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || (financePacketState === 'previewed' ? 'Previewed locally' : financePacketState === 'failed' ? 'Failed' : 'Not sent yet') %></strong></div>
+    <div><span>Finance email status</span><strong><%= financePacketStatusLabel %></strong></div>
     <div><span>Payment confirmed</span><strong><%= request.payment_confirmed_at || 'Pending' %></strong></div>
     <div><span>Amount paid</span><strong><%= request.payment_confirmation_amount ? money(request.payment_confirmation_amount) : 'Pending' %></strong></div>
     <div><span>Payment method</span><strong><%= request.payment_confirmation_method || 'Pending' %></strong></div>
     <div><span>Payment reference</span><strong><%= request.payment_confirmation_reference || 'Pending' %></strong></div>
     <div><span>Applicant payment notice</span><strong><%= request.applicant_outcome_notified_at || 'No' %></strong></div>
   </div>
+
+  <% if (request.decision) { %>
+    <form method="post" action="/requests/<%= request.id %>/send-finance-packet" class="stacked-form">
+      <button class="btn btn-soft"><%= financePacketState === 'sent' ? 'Resend Finance Packet Email' : 'Send Finance Packet Email' %></button>
+      <p class="fine-print">Use this if Finance did not receive the email or after fixing your Resend or SMTP configuration.</p>
+    </form>
+  <% } %>
 
   <% if (request.payment_confirmation_notes) { %>
     <div class="leader-text-block"><span>Finance notes</span><p><%= request.payment_confirmation_notes %></p></div>
