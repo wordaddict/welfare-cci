@@ -1,5 +1,20 @@
 <%- include('partials_header') %>
 
+<%
+  const formatDateTime = (value) => {
+    if (!value) return 'Not recorded';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+%>
+
 <section class="case-hero">
   <div>
     <p class="eyebrow">Case file</p>
@@ -9,7 +24,7 @@
   <div class="case-status-panel">
     <span class="tag <%= request.urgency==='Emergency'?'danger':(request.urgency==='Urgent'?'warning':'') %>"><%= request.urgency %></span>
     <strong><%= request.status === 'Awaiting Leadership Verification' ? 'Awaiting Leadership Verification' : request.status === 'Awaiting Pastoral Verification' || request.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : request.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : request.status %></strong>
-    <small>Submitted <%= request.created_at %></small>
+    <small>Submitted <%= formatDateTime(request.created_at) %></small>
     <a class="btn btn-soft" href="/requests/<%= request.id %>/report">Generate Report</a>
           <a class="btn btn-soft" href="/requests/<%= request.id %>/report/download">Download Report PDF</a>
   </div>
@@ -206,7 +221,7 @@
     <% } %>
     <% (leadershipVerifications || []).forEach(v => { %>
       <div class="leader-response-card">
-        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= v.created_at %></small></div>
+        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= formatDateTime(v.created_at) %></small></div>
         <div class="info-grid compact leader-contact-grid">
           <div><span>Confirmed Celeforce worker status</span><strong><%= v.worker_confirmed %></strong></div>
           <div><span>Confirmed service in stated unit</span><strong><%= v.unit_confirmed %></strong></div>
@@ -257,7 +272,7 @@
             <span>Submitted by Pastor</span>
             <strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong>
           </div>
-          <small><%= v.created_at %></small>
+          <small><%= formatDateTime(v.created_at) %></small>
         </div>
 
         <div class="info-grid compact leader-contact-grid">
@@ -316,7 +331,7 @@
     <div class="review-report-card">
       <div class="leader-response-header">
         <div><span>Reviewer</span><strong><%= r.reviewer_name %></strong></div>
-        <small><%= r.updated_at || r.created_at %></small>
+        <small><%= formatDateTime(r.updated_at || r.created_at) %></small>
       </div>
       <div class="info-grid compact">
         <div><span>Decision</span><strong><%= r.recommended_decision %></strong></div>
@@ -432,7 +447,7 @@
       </div>
     <% } %>
   <% } else { %>
-    <div class="subtle-note"><b>Applicant close-out submitted:</b> <%= applicantFollowup.created_at %></div>
+    <div class="subtle-note"><b>Applicant close-out submitted:</b> <%= formatDateTime(applicantFollowup.created_at) %></div>
     <div class="info-grid compact">
       <div><span>Funds used as intended?</span><strong><%= applicantFollowup.funds_used_as_intended %></strong></div>
       <div><span>Issue resolved?</span><strong><%= applicantFollowup.issue_resolved %></strong></div>
@@ -455,7 +470,7 @@
 
 <section class="card panel-card">
   <h2>Activity Log</h2>
-  <% logs.forEach(l=>{ %><p class="muted"><%= l.created_at %> — <b><%= l.action %></b> by <%= l.user_name || 'Applicant/System' %>: <%= l.details %></p><% }) %>
+  <% logs.forEach(l=>{ %><p class="muted"><%= formatDateTime(l.created_at) %> — <b><%= l.action %></b> by <%= l.user_name || 'Applicant/System' %>: <%= l.details %></p><% }) %>
 </section>
 
 <%- include('partials_footer') %>

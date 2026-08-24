@@ -1,5 +1,20 @@
 <%- include('partials_header') %>
 
+<%
+  const formatDateTime = (value) => {
+    if (!value) return 'Not recorded';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+%>
+
 <section class="case-hero reviewer-case-hero">
   <div>
     <p class="eyebrow">Secure reviewer workspace</p>
@@ -106,7 +121,7 @@
     <% } %>
     <% (leadershipVerifications || []).forEach(v => { %>
       <div class="leader-response-card">
-        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= v.created_at %></small></div>
+        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= formatDateTime(v.created_at) %></small></div>
         <div class="info-grid compact leader-contact-grid">
           <div><span>Celeforce worker status confirmed by Unit Head</span><strong><%= v.worker_confirmed %></strong></div>
           <div><span>Service in stated unit confirmed by Unit Head</span><strong><%= v.unit_confirmed %></strong></div>
@@ -141,7 +156,7 @@
 
     <% verifications.forEach(v=>{ %>
       <div class="leader-response-card">
-        <div class="leader-response-header"><div><span>Submitted by Pastor</span><strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong></div><small><%= v.created_at %></small></div>
+        <div class="leader-response-header"><div><span>Submitted by Pastor</span><strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong></div><small><%= formatDateTime(v.created_at) %></small></div>
         <div class="info-grid compact leader-contact-grid">
           <div><span>Pastor email</span><strong class="wrap-text"><%= v.verifier_email || request.leader_email || 'Not provided' %></strong></div>
           <div><span>Pastor phone</span><strong><%= v.verifier_phone || request.leader_phone || 'Not provided' %></strong></div>

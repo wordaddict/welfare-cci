@@ -454,12 +454,17 @@ body{
 }
 .leader-response-header{
   display:flex;
+  flex-wrap:wrap;
   align-items:flex-start;
   justify-content:space-between;
   gap:18px;
   padding-bottom:16px;
   border-bottom:1px solid #F1E2E4;
   margin-bottom:16px;
+}
+.leader-response-header > div{
+  flex:1 1 240px;
+  min-width:0;
 }
 .leader-response-header span,
 .leader-text-block span{
@@ -471,8 +476,19 @@ body{
   text-transform:uppercase;
   margin-bottom:5px;
 }
-.leader-response-header strong{font-size:1.18rem;}
-.leader-response-header small{color:#7A8495;font-weight:700;white-space:nowrap;}
+.leader-response-header strong{
+  font-size:1.18rem;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+.leader-response-header small{
+  color:#7A8495;
+  font-weight:700;
+  white-space:normal;
+  margin-left:auto;
+  text-align:right;
+  overflow-wrap:anywhere;
+}
 .leader-text-block{
   background:#fff;
   border:1px solid #EDF0F4;
@@ -841,7 +857,7 @@ h1 {
 .aligned-fields > label { display: flex; flex-direction: column; height: 100%; justify-content: flex-end; }
 .leader-question-grid { align-items: end; }
 .leader-question-grid label { display: flex; flex-direction: column; justify-content: flex-end; min-height: 112px; }
-.wrap-text, .leader-text-block p, .leader-response-card, .request-report, .report-card { overflow-wrap: anywhere; word-break: break-word; }
+.wrap-text, .leader-text-block p, .request-report, .report-card { overflow-wrap: anywhere; word-break: break-word; }
 .reviewer-case-hero h1, .track-status-hero h1, .case-hero h1 { color: #fff; opacity: 1; text-shadow: 0 1px 0 rgba(0,0,0,.2); }
 .review-invite-actions { display:flex; gap: 1rem; flex-wrap: wrap; align-items:center; }
 .progress-step.completed { background: #ecfdf3 !important; border-color: #80d8a3 !important; color: #116b35 !important; }
@@ -849,6 +865,13 @@ h1 {
 .progress-step.current { background: #fff4f4; border-color: #ffb3b3; }
 .applicant-followup-card { border-left: 6px solid #e30613; }
 .leader-response-card .leader-text-block p { max-width: 100%; white-space: normal; line-height: 1.45; }
+.leader-response-card,
+.leader-response-card .leader-response-header,
+.leader-response-card .leader-response-header span,
+.leader-response-card .leader-response-header strong {
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .assigned-reviewer-row small.declined { color:#b00010; }
 .assigned-reviewer-row small.accepted { color:#116b35; }
 .assigned-reviewer-row small.expired { color:#6b7280; }
