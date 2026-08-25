@@ -7,10 +7,23 @@ const { getAppConfig } = require('./config');
 const { money } = require('./helpers');
 const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment');
 
+const MAX_EMAIL_SIZE_BYTES = 40 * 1024 * 1024;
+
 function briefText(value, limit = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return 'Not provided';
   return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text;
+}
+
+function estimateBase64Size(byteLength) {
+  return Math.ceil(Number(byteLength || 0) / 3) * 4;
+}
+
+function formatBytes(byteLength) {
+  const bytes = Number(byteLength || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function scoreInterpretation(summary) {
@@ -204,13 +217,13 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
       (async () => {
         for (const file of docs || []) {
           const storedFile = await getStoredFileByKey(db, file.stored_name);
-          appendStoredFileToArchive(archive, storedFile, `Applicant evidence/${file.original_name}`);
+          await appendStoredFileToArchive(archive, storedFile, `Applicant evidence/${file.original_name}`);
         }
 
         const leader = verifications && verifications.length ? verifications[0] : null;
         if (leader && leader.support_letter_file) {
           const supportLetter = await getStoredFileByKey(db, leader.support_letter_file);
-          appendStoredFileToArchive(archive, supportLetter, `Pastoral support letter/${supportLetter ? supportLetter.original_name : leader.support_letter_file}`);
+          await appendStoredFileToArchive(archive, supportLetter, `Pastoral support letter/${supportLetter ? supportLetter.original_name : leader.support_letter_file}`);
         }
 
         await archive.finalize();
@@ -247,6 +260,12 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
       request.finance_confirm_token = token;
     }
     const packetBuffer = await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
+    const estimatedEncodedSize = estimateBase64Size(packetBuffer.length);
+    if (estimatedEncodedSize > MAX_EMAIL_SIZE_BYTES) {
+      const reason = `Finance packet is too large to email (${formatBytes(packetBuffer.length)} raw, ~${formatBytes(estimatedEncodedSize)} after Base64 encoding).`;
+      await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${reason}`);
+      return { success: false, provider: 'attachment-check', reason };
+    }
     const amountForAction = approved ? money(request.amount_approved || request.amount_requested) : 'No payment action requested';
     const confirmLink = `${baseUrl(req)}/finance-confirm/${token}`;
     const paymentDetails = request.payment_details || request.direct_payment_explanation || 'No payment details provided.';
