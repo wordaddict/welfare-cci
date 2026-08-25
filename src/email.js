@@ -39,13 +39,19 @@ function formatTextAsHtmlParagraphs(value) {
     .join('');
 }
 
+function textStartsWithGreeting(value) {
+  const text = String(value || '').trim();
+  return /^(dear|hello|hi|good\s+(morning|afternoon|evening))\b/i.test(text);
+}
+
 function buildDefaultHtml({ subject, recipientName, text }) {
+  const showWrapperGreeting = recipientName && !textStartsWithGreeting(text);
   return `
     <div style="margin:0; padding:24px 12px; background:#f5f7fb; font-family:Arial, sans-serif; color:#111827;">
       <div style="max-width:680px; margin:0 auto;">
         <div style="background:#ffffff; border:1px solid #d1d5db; border-radius:20px; padding:32px 28px;">
           <h2 style="margin:0 0 24px 0; font-size:28px; line-height:1.2; color:#111827;">${escapeHtml(subject)}</h2>
-          ${recipientName ? `<p style="margin:0 0 18px 0; font-size:16px; line-height:1.7; color:#374151;">Hello ${escapeHtml(recipientName)},</p>` : ''}
+          ${showWrapperGreeting ? `<p style="margin:0 0 18px 0; font-size:16px; line-height:1.7; color:#374151;">Hello ${escapeHtml(recipientName)},</p>` : ''}
           <div style="font-size:16px; line-height:1.75; color:#374151;">
             ${formatTextAsHtmlParagraphs(text)}
           </div>
