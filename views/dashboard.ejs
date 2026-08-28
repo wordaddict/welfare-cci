@@ -1,6 +1,161 @@
 <%- include('partials_header') %>
-<div class="page-heading"><p class="eyebrow">Staff workspace</p><h1 class="section-title">Financial Assistance Dashboard</h1></div>
-<div class="grid"><div class="card"><h3>Total Requests</h3><p class="big"><%= totals.total || 0 %></p></div><div class="card"><h3>Total Requested</h3><p class="big"><%= money(totals.requested || 0) %></p></div><div class="card"><h3>Total Approved</h3><p class="big"><%= money(totals.approved || 0) %></p></div></div>
-<div class="card"><h2>Status Summary</h2><div class="chips"><% stats.forEach(s=>{ %><span><%= s.status %>: <b><%= s.count %></b></span><% }) %></div></div>
-<div class="card"><h2>Recent Requests</h2><table><thead><tr><th>Case ID</th><th>Name</th><th>Category</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody><% recent.forEach(r=>{ %><tr><td><%= r.case_id %></td><td><%= r.full_name %></td><td><%= r.request_category %></td><td><%= money(r.amount_requested) %></td><td><span class="tag"><%= r.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : (r.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : r.status) %></span></td><td><a href="/requests/<%= r.id %>">Open</a></td></tr><% }) %></tbody></table></div>
+
+<section class="dashboard-shell">
+  <section class="card dashboard-header">
+    <div class="dashboard-header-copy">
+      <p class="eyebrow dark">Staff workspace</p>
+      <h1>Financial Assistance Dashboard</h1>
+      <p class="muted">Quick view of requests, stages, and the latest submitted cases.</p>
+    </div>
+    <div class="dashboard-header-actions">
+      <a class="btn btn-primary" href="/requests">Open Request Queue</a>
+      <a class="btn btn-soft" href="/reports">View Reports</a>
+      <a class="btn btn-soft" href="/admin/reviewers">Reviewer Directory</a>
+    </div>
+  </section>
+
+  <section class="dashboard-kpi-grid">
+    <% summaryCards.forEach((card) => { %>
+      <article class="dashboard-kpi-card dashboard-kpi-card--<%= card.tone %>">
+        <span class="dashboard-kpi-label"><%= card.label %></span>
+        <strong class="dashboard-kpi-value"><%= card.value %></strong>
+        <p class="dashboard-kpi-caption"><%= card.caption %></p>
+      </article>
+    <% }) %>
+  </section>
+
+  <section class="dashboard-overview-grid">
+    <section class="card dashboard-panel">
+      <div class="dashboard-section-head">
+        <div>
+          <h2>Stage Summary</h2>
+          <p class="muted">Current request stages at a glance.</p>
+        </div>
+        <a class="btn btn-soft dashboard-inline-btn" href="/requests">All Requests</a>
+      </div>
+
+      <% if (statusSummary.length) { %>
+        <ul class="dashboard-simple-list">
+          <% statusSummary.forEach((item) => { %>
+            <li>
+              <a class="dashboard-list-link dashboard-tone-<%= item.tone %>" href="<%= item.href %>">
+                <span class="dashboard-list-copy">
+                  <strong><%= item.label %></strong>
+                </span>
+                <strong class="dashboard-list-count"><%= item.count %></strong>
+              </a>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <div class="dashboard-empty-state">
+          <b>No requests yet.</b>
+          <p>As requests come in, the stage summary will appear here.</p>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card dashboard-panel">
+      <div class="dashboard-section-head">
+        <div>
+          <h2>Top Request Categories</h2>
+          <p class="muted">Most common request types.</p>
+        </div>
+        <a class="btn btn-soft dashboard-inline-btn" href="/reports">Open Reports</a>
+      </div>
+
+      <% if (topCategories.length) { %>
+        <ul class="dashboard-simple-list">
+          <% topCategories.forEach((category) => { %>
+            <li>
+              <a class="dashboard-list-link" href="/requests?category=<%= encodeURIComponent(category.name) %>">
+                <span class="dashboard-list-copy">
+                  <strong><%= category.name %></strong>
+                  <small><%= category.count %> request<%= category.count === 1 ? '' : 's' %> · <%= category.requestedLabel %> requested</small>
+                </span>
+                <span class="dashboard-list-action">Open</span>
+              </a>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <div class="dashboard-empty-state">
+          <b>No category history yet.</b>
+          <p>Category trends will show here once requests are submitted.</p>
+        </div>
+      <% } %>
+    </section>
+  </section>
+
+  <section class="card dashboard-list-panel">
+    <div class="dashboard-section-head">
+      <div>
+        <h2>Recent Requests</h2>
+        <p class="muted">Latest submitted or updated cases.</p>
+      </div>
+      <a class="btn btn-soft dashboard-inline-btn" href="/requests">Open Full Queue</a>
+    </div>
+
+    <% if (recentItems.length) { %>
+      <div class="dashboard-activity-table">
+        <div class="dashboard-activity-head">
+          <span>Case ID</span>
+          <span>Name</span>
+          <span>Category</span>
+          <span>Requested</span>
+          <span>Status</span>
+          <span></span>
+        </div>
+
+        <% recentItems.forEach((item) => { %>
+          <article class="dashboard-activity-row">
+            <div class="dashboard-activity-col dashboard-activity-col--case">
+              <span class="dashboard-activity-label">Case ID</span>
+              <strong class="dashboard-activity-case"><%= item.caseId %></strong>
+            </div>
+
+            <div class="dashboard-activity-col dashboard-activity-col--name">
+              <span class="dashboard-activity-label">Name</span>
+              <strong><%= item.applicantName %></strong>
+              <small>Updated <%= item.updatedLabel %></small>
+            </div>
+
+            <div class="dashboard-activity-col dashboard-activity-col--category">
+              <span class="dashboard-activity-label">Category</span>
+              <strong><%= item.category %></strong>
+              <small>Decision <%= item.decisionLabel %></small>
+            </div>
+
+            <div class="dashboard-activity-col dashboard-activity-col--amount">
+              <span class="dashboard-activity-label">Requested</span>
+              <strong><%= item.requestedLabel %></strong>
+              <small>Approved <%= item.approvedLabel %></small>
+            </div>
+
+            <div class="dashboard-activity-col dashboard-activity-col--status">
+              <span class="dashboard-activity-label">Status</span>
+              <div class="dashboard-activity-status-stack">
+                <span class="dashboard-status-pill dashboard-tone-<%= item.statusTone %>"><%= item.status %></span>
+                <% if (item.urgency !== 'Standard') { %>
+                  <span class="tag <%= item.urgencyTone %>"><%= item.urgency %></span>
+                <% } %>
+              </div>
+            </div>
+
+            <div class="dashboard-activity-col dashboard-activity-col--action">
+              <span class="dashboard-activity-label">Action</span>
+              <a class="btn btn-soft dashboard-row-open-btn" href="/requests/<%= item.id %>">Open</a>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="dashboard-empty-state">
+        <b>No recent requests to show.</b>
+        <p>Once applicants start submitting requests, the newest cases will appear here.</p>
+      </div>
+    <% } %>
+  </section>
+</section>
+
 <%- include('partials_footer') %>

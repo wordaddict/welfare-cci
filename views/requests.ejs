@@ -1,4 +1,134 @@
 <%- include('partials_header') %>
-<div class="page-heading"><p class="eyebrow">Committee review</p><h1 class="section-title">Financial Assistance Requests</h1></div><div class="card"><form class="filters"><label>Status<select name="status"><option value="">All</option><% [['New Request','New Request'],['Intake Review','Intake Review'],['Missing Information','Missing Information'],['Awaiting Leadership Verification','Awaiting Leadership Verification'],['Leadership Verification Complete','Leadership Verification Complete'],['Awaiting Pastoral Verification','Awaiting Pastoral Verification'],['Pastoral Verification Complete','Pastoral Verification Complete'],['Awaiting Leader Verification','Pastoral Verification (legacy)'],['Leader Verification Complete','Pastoral Verification Complete (legacy)'],['Assigned to Reviewers','Assigned to Reviewers'],['Committee Review','Committee Review'],['Decision Made','Decision Made'],['Escalated to Pastorate','Escalated to Pastorate'],['Follow-Up Needed','Follow-Up Needed'],['Closed','Closed']].forEach(([value,label])=>{ %><option value="<%= value %>" <%= status===value?'selected':'' %>><%= label %></option><% }) %></select></label><label>Category<select name="category"><option value="">All</option><% ['Rent or Housing','Utilities','Groceries or Food','Medical or Health-Related Support','Tuition or Education','Emergency Accommodation','Special CCI Event Support','Other Exceptional Need'].forEach(x=>{ %><option <%= category===x?'selected':'' %>><%= x %></option><% }) %></select></label><button class="btn small">Filter</button></form></div>
-<div class="card"><table><thead><tr><th>Case</th><th>Submitted</th><th>Applicant</th><th>Category</th><th>Requested</th><th>Due</th><th>Urgency</th><th>Status</th><th></th></tr></thead><tbody><% requests.forEach(r=>{ %><tr><td><%= r.case_id %></td><td><%= r.created_at?.slice(0,10) %></td><td><%= r.full_name %></td><td><%= r.request_category %></td><td><%= money(r.amount_requested) %></td><td><%= r.due_date || '' %></td><td><span class="tag <%= r.urgency==='Emergency'?'danger':(r.urgency==='Urgent'?'warning':'') %>"><%= r.urgency %></span></td><td><%= r.status === 'Awaiting Leader Verification' ? 'Awaiting Pastoral Verification' : (r.status === 'Leader Verification Complete' ? 'Pastoral Verification Complete' : r.status) %></td><td><a href="/requests/<%= r.id %>">Open</a></td></tr><% }) %></tbody></table></div>
+
+<%
+  const formatListDate = (value) => {
+    if (!value) return '';
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+    return parsed.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const displayStatus = (status) => {
+    if (status === 'Awaiting Leader Verification') return 'Awaiting Pastoral Verification';
+    if (status === 'Leader Verification Complete') return 'Pastoral Verification Complete';
+    return status;
+  };
+
+  const requestCountLabel = requests.length === 1 ? '1 request' : `${requests.length} requests`;
+%>
+
+<section class="requests-page">
+  <div class="requests-page-top">
+    <div class="page-heading requests-page-heading">
+      <p class="eyebrow">Committee review</p>
+      <h1 class="section-title">Request Queue</h1>
+      <p class="muted requests-page-subtitle">Review recent cases, filter quickly, and open a request to take action.</p>
+    </div>
+    <div class="requests-count-chip">
+      <strong><%= requests.length %></strong>
+      <span><%= requestCountLabel %></span>
+    </div>
+  </div>
+
+  <div class="card requests-filter-card">
+    <form class="filters requests-filters">
+      <label>Status
+        <select name="status">
+          <option value="">All</option>
+          <% [
+            ['New Request', 'New Request'],
+            ['Intake Review', 'Intake Review'],
+            ['Missing Information', 'Missing Information'],
+            ['Awaiting Leadership Verification', 'Awaiting Leadership Verification'],
+            ['Leadership Verification Complete', 'Leadership Verification Complete'],
+            ['Awaiting Pastoral Verification', 'Awaiting Pastoral Verification'],
+            ['Pastoral Verification Complete', 'Pastoral Verification Complete'],
+            ['Awaiting Leader Verification', 'Pastoral Verification (legacy)'],
+            ['Leader Verification Complete', 'Pastoral Verification Complete (legacy)'],
+            ['Assigned to Reviewers', 'Assigned to Reviewers'],
+            ['Committee Review', 'Committee Review'],
+            ['Decision Made', 'Decision Made'],
+            ['Escalated to Pastorate', 'Escalated to Pastorate'],
+            ['Follow-Up Needed', 'Follow-Up Needed'],
+            ['Closed', 'Closed']
+          ].forEach(([value, label]) => { %>
+            <option value="<%= value %>" <%= status === value ? 'selected' : '' %>><%= label %></option>
+          <% }) %>
+        </select>
+      </label>
+
+      <label>Category
+        <select name="category">
+          <option value="">All</option>
+          <% [
+            'Rent or Housing',
+            'Utilities',
+            'Groceries or Food',
+            'Medical or Health-Related Support',
+            'Tuition or Education',
+            'Emergency Accommodation',
+            'Special CCI Event Support',
+            'Other Exceptional Need'
+          ].forEach((item) => { %>
+            <option <%= category === item ? 'selected' : '' %>><%= item %></option>
+          <% }) %>
+        </select>
+      </label>
+
+      <button class="btn small">Filter</button>
+    </form>
+  </div>
+
+  <div class="requests-list">
+    <% if (!requests.length) { %>
+      <div class="card requests-empty-state">
+        <strong>No requests found.</strong>
+        <p>Try adjusting the filters or check back after new applications are submitted.</p>
+      </div>
+    <% } %>
+
+    <% requests.forEach((r) => { %>
+      <a class="card request-row-card request-row-card-link" href="/requests/<%= r.id %>">
+        <div class="request-row-main">
+          <div class="request-row-heading">
+            <div>
+              <p class="request-row-case"><%= r.case_id %></p>
+              <h2><%= r.full_name %></h2>
+            </div>
+          </div>
+
+          <div class="request-row-meta">
+            <span><strong>Submitted</strong><%= formatListDate(r.created_at) %></span>
+            <span><strong>Due</strong><%= formatListDate(r.due_date) || 'Not set' %></span>
+            <span><strong>Status</strong><%= displayStatus(r.status) %></span>
+          </div>
+        </div>
+
+        <div class="request-row-side">
+          <div class="request-row-badges">
+            <span class="request-status-pill request-status-pill--category"><%= r.request_category %></span>
+            <span class="request-status-pill"><%= displayStatus(r.status) %></span>
+            <span class="tag <%= r.urgency === 'Emergency' ? 'danger' : (r.urgency === 'Urgent' ? 'warning' : '') %>">
+              <%= r.urgency %>
+            </span>
+          </div>
+
+          <div class="request-row-action-strip">
+            <div class="request-row-amount">
+              <small>Requested</small>
+              <strong><%= money(r.amount_requested) %></strong>
+            </div>
+
+            <span class="btn btn-soft request-open-btn">Open Request</span>
+          </div>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</section>
+
 <%- include('partials_footer') %>
