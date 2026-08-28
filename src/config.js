@@ -44,7 +44,7 @@ const envSchema = z.object({
   QSTASH_NEXT_SIGNING_KEY: optionalString(),
   QSTASH_SKIP_URL_VERIFICATION: boolFromString(false).default(false),
   INTERNAL_JOB_SECRET: optionalString(),
-  AUTO_ASSIGN_REVIEWERS: boolFromString(false).default(false),
+  AUTO_ASSIGN_REVIEWERS: boolFromString(true).default(true),
   RUN_SCHEDULERS: boolFromString(true).default(true),
   DISABLE_REVIEWER_SCHEDULER: boolFromString(false).default(false),
   DISABLE_CLOSEOUT_SCHEDULER: boolFromString(false).default(false),

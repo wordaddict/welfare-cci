@@ -1,3 +1,119 @@
 <%- include('partials_header') %>
-<h1 class="section-title">Reports</h1><p><a class="btn small" href="/reports/export.csv">Export CSV</a></p><div class="grid"><section class="card"><h2>By Category</h2><table><thead><tr><th>Category</th><th>Count</th><th>Requested</th><th>Approved</th></tr></thead><tbody><% byCategory.forEach(r=>{ %><tr><td><%= r.request_category %></td><td><%= r.count %></td><td><%= money(r.requested) %></td><td><%= money(r.approved) %></td></tr><% }) %></tbody></table></section><section class="card"><h2>By Status</h2><table><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody><% byStatus.forEach(r=>{ %><tr><td><%= r.status %></td><td><%= r.count %></td></tr><% }) %></tbody></table></section><section class="card"><h2>By Month</h2><table><thead><tr><th>Month</th><th>Count</th><th>Approved</th></tr></thead><tbody><% byMonth.forEach(r=>{ %><tr><td><%= r.month %></td><td><%= r.count %></td><td><%= money(r.approved) %></td></tr><% }) %></tbody></table></section></div>
+<section class="reports-shell">
+  <section class="card reports-header">
+    <div class="reports-header-copy">
+      <p class="eyebrow dark">Admin analytics</p>
+      <h1>Reports</h1>
+      <p class="muted">Review request totals, category demand, stage distribution, and month-by-month approvals from one clean summary view.</p>
+    </div>
+    <div class="reports-header-actions">
+      <a class="btn btn-soft" href="/dashboard">Back to Dashboard</a>
+      <a class="btn btn-primary" href="/reports/export.csv">Export CSV</a>
+    </div>
+  </section>
+
+  <section class="reports-kpi-grid">
+    <% summaryCards.forEach((card) => { %>
+      <article class="reports-kpi-card reports-kpi-card--<%= card.tone %>">
+        <span class="reports-kpi-label"><%= card.label %></span>
+        <strong class="reports-kpi-value"><%= card.value %></strong>
+        <p class="reports-kpi-caption"><%= card.caption %></p>
+      </article>
+    <% }) %>
+  </section>
+
+  <section class="reports-overview-grid">
+    <section class="card reports-panel">
+      <div class="reports-section-head">
+        <div>
+          <h2>By Category</h2>
+          <p class="muted">Where assistance demand is currently concentrated.</p>
+        </div>
+        <% if (reportHighlights.topCategory) { %>
+          <span class="reports-chip">Top: <%= reportHighlights.topCategory.name %></span>
+        <% } %>
+      </div>
+
+      <% if (categoryRows.length) { %>
+        <div class="reports-table">
+          <div class="reports-table-head reports-table-head--category">
+            <span>Category</span>
+            <span>Requests</span>
+            <span>Requested</span>
+            <span>Approved</span>
+          </div>
+          <% categoryRows.forEach((row) => { %>
+            <a class="reports-table-row reports-table-row--category" href="<%= row.href %>">
+              <span class="reports-table-primary"><strong><%= row.name %></strong></span>
+              <span><%= row.count %></span>
+              <span><%= row.requestedLabel %></span>
+              <span><%= row.approvedLabel %></span>
+            </a>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="dashboard-empty-state">
+          <b>No category data yet.</b>
+          <p>Category totals will appear here once requests have been submitted.</p>
+        </div>
+      <% } %>
+    </section>
+
+    <section class="card reports-panel">
+      <div class="reports-section-head">
+        <div>
+          <h2>By Status</h2>
+          <p class="muted">Current request stage distribution across the workflow.</p>
+        </div>
+      </div>
+
+      <% if (statusRows.length) { %>
+        <ul class="reports-status-list">
+          <% statusRows.forEach((row) => { %>
+            <li>
+              <a class="reports-status-link" href="<%= row.href %>">
+                <span class="dashboard-status-pill dashboard-tone-<%= row.tone %>"><%= row.label %></span>
+                <strong><%= row.count %></strong>
+              </a>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <div class="dashboard-empty-state">
+          <b>No status data yet.</b>
+          <p>Status totals will appear here once requests begin moving through the workflow.</p>
+        </div>
+      <% } %>
+    </section>
+  </section>
+
+  <section class="card reports-panel">
+    <div class="reports-section-head">
+      <div>
+        <h2>By Month</h2>
+        <p class="muted">Monthly approval view for submitted requests.</p>
+      </div>
+      <% if (reportHighlights.latestMonth) { %>
+        <span class="reports-chip">Latest: <%= reportHighlights.latestMonth.monthLabel %></span>
+      <% } %>
+    </div>
+
+    <% if (monthRows.length) { %>
+      <div class="reports-month-grid">
+        <% monthRows.forEach((row) => { %>
+          <article class="reports-month-card">
+            <span class="reports-month-label"><%= row.monthLabel %></span>
+            <strong class="reports-month-value"><%= row.approvedLabel %></strong>
+            <p><%= row.count %> request<%= row.count === 1 ? '' : 's' %> approved or recorded that month.</p>
+          </article>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="dashboard-empty-state">
+        <b>No monthly history yet.</b>
+        <p>Approved monthly totals will show here as requests are processed.</p>
+      </div>
+    <% } %>
+  </section>
+</section>
 <%- include('partials_footer') %>

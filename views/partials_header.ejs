@@ -9,7 +9,9 @@
 <body>
 <% const isPublicPage = typeof publicPage !== "undefined" && publicPage; %>
 <% const isLandingPage = typeof landingPage !== "undefined" && landingPage; %>
-<header class="topbar <%= (isPublicPage || isLandingPage) ? 'public-topbar' : '' %>">
+<% const sessionUser = typeof user !== "undefined" ? user : null; %>
+<% const hasPrimaryNav = !isLandingPage && !isPublicPage; %>
+<header class="topbar <%= (isPublicPage || isLandingPage) ? 'public-topbar' : '' %>" data-mobile-nav>
   <a class="brand" href="/" aria-label="CCI America Financial Assistance home">
     <img src="/cci-america-logo.png" alt="CCI America logo" class="brand-logo">
     <span class="brand-text">
@@ -17,18 +19,35 @@
       <small>Financial Assistance</small>
     </span>
   </a>
-  <nav class="navlinks">
+  <% if (hasPrimaryNav) { %>
+    <button
+      class="mobile-nav-toggle"
+      type="button"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+      aria-controls="primaryNavigation"
+      data-mobile-nav-toggle
+    >
+      <span class="mobile-nav-toggle-label">Menu</span>
+      <span class="mobile-nav-toggle-bars" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+  <% } %>
+  <nav class="navlinks" id="primaryNavigation" data-mobile-nav-panel>
     <% if (isLandingPage) { %>
       <!-- Landing page intentionally keeps navigation minimal. Use the hero buttons to start or log in. -->
     <% } else if (isPublicPage) { %>
       <span class="secure-pill"><%= typeof publicLabel !== "undefined" ? publicLabel : "Secure verification" %></span>
     <% } else { %>
-      <% if (user) { %>
-        <% if (user.role === 'applicant') { %>
+      <% if (sessionUser) { %>
+        <% if (sessionUser.role === 'applicant') { %>
           <a href="/apply">Apply</a>
           <a href="/track">Track Request</a>
         <% } %>
-        <% if (user.role === 'admin') { %>
+        <% if (sessionUser.role === 'admin') { %>
           <a href="/dashboard">Dashboard</a>
           <a href="/requests">Requests</a>
           <a href="/reports">Reports</a>
