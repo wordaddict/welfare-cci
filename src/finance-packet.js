@@ -45,7 +45,6 @@ function drawFinanceSummaryPdf({ doc, request, docs = [], verifications, assigne
   const soft = '#f6f7f9';
   const maroon = '#2b071f';
   const cciLogo = path.join(__dirname, '..', 'public', 'cci-america-logo.png');
-  const tmakLogo = path.join(__dirname, '..', 'public', 'tmak-logo.jpg');
   const primaryLeader = verifications && verifications.length ? verifications[0] : null;
   const approvedAmount = request.amount_approved ? money(request.amount_approved) : (request.decision && request.decision.includes('Approval') ? money(request.amount_requested) : 'Pending');
   const interp = scoreInterpretation(reviewSummary);
@@ -186,8 +185,6 @@ function drawFinanceSummaryPdf({ doc, request, docs = [], verifications, assigne
 
   doc.moveTo(margin, 665).lineTo(pageW - margin, 665).strokeColor(line).lineWidth(0.7).stroke();
   doc.font('Helvetica-Bold').fontSize(6.8).fillColor(muted).text('Confidential: For CCI USA Finance Team and authorized committee use only. · © 2026 CCI America.', margin, 676, { width: 390 });
-  if (fs.existsSync(tmakLogo)) doc.image(tmakLogo, pageW - 142, 669, { width: 27 });
-  doc.font('Helvetica-Bold').fontSize(6.8).fillColor(muted).text('Developed by TMAK Consultancy', pageW - 112, 676, { width: 76, align: 'right' });
 }
 
 function buildFinanceSummaryPdfBuffer({ request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {

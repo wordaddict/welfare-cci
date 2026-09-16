@@ -226,7 +226,7 @@ CCI America Financial Assistance Committee`
       ];
       const values = [
         caseId, req.session.user.id, req.body.full_name, req.body.email, req.body.phone, req.body.city_state, req.body.cci_connection_type, req.body.cci_community_name,
-        req.body.leader_name, 'Pastor', `${req.body.leader_email} / ${req.body.leader_phone}`, req.body.leader_email, req.body.leader_phone, pastorToken,
+        req.body.leader_name, 'Pastor', [req.body.leader_email, req.body.leader_phone].filter(Boolean).join(' / '), req.body.leader_email, req.body.leader_phone || '', pastorToken,
         null, trackingToken,
         req.body.connection_duration, req.body.membership_status,
         req.body.membership_status === 'No' ? req.body.map_group_status : null,

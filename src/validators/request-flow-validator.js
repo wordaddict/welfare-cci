@@ -9,7 +9,6 @@ const APPLICANT_REQUIRED_FIELDS = [
   'cci_community_name',
   'leader_name',
   'leader_email',
-  'leader_phone',
   'connection_duration',
   'membership_status',
   'worker_status',
@@ -55,7 +54,6 @@ const LEADERSHIP_REQUIRED_FIELDS = [
 const PASTOR_REQUIRED_FIELDS = [
   'verifier_name',
   'verifier_email',
-  'verifier_phone',
   'is_member',
   'is_regular_participant',
   'is_worker',
