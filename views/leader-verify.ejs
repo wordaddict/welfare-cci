@@ -63,7 +63,7 @@
         <label>Your name *<input name="verifier_name" value="<%= request.leader_name || '' %>" required></label>
         <label>Your email address *<input name="verifier_email" type="email" value="<%= request.leader_email || '' %>" required></label>
       </div>
-      <label>Your phone number *<input name="verifier_phone" value="<%= request.leader_phone || '' %>" required></label>
+      <label>Your phone number <input name="verifier_phone" value="<%= request.leader_phone || '' %>"></label>
 
       <div class="two">
         <label>Is this person an official member of CCI? *

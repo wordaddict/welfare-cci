@@ -423,6 +423,9 @@ async function initDb() {
     ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS cloud_version INTEGER;
     ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS secure_url TEXT;
 
+    ALTER TABLE requests ALTER COLUMN leader_phone DROP NOT NULL;
+    ALTER TABLE leader_verifications ALTER COLUMN verifier_phone DROP NOT NULL;
+
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS provider TEXT;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
   `);
