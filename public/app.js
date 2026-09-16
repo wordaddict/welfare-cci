@@ -116,7 +116,60 @@ function updateEffortActionValidation(){
   boxes[0].setCustomValidity(checked.length === 0 ? 'Please select at least one option. Select None yet if no action has been taken.' : conflict ? 'Please select either None yet or the actions you have taken, not both.' : '');
 }
 
+function setupMobileNav() {
+  const header = document.querySelector('[data-mobile-nav]');
+  const toggle = document.querySelector('[data-mobile-nav-toggle]');
+  const panel = document.querySelector('[data-mobile-nav-panel]');
+  if (!header || !toggle || !panel) return;
+
+  const mobileQuery = window.matchMedia('(max-width: 920px)');
+  const setOpen = (open) => {
+    header.classList.toggle('nav-open', open);
+    document.body.classList.toggle('mobile-nav-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+  };
+
+  setOpen(false);
+
+  toggle.addEventListener('click', () => {
+    setOpen(!header.classList.contains('nav-open'));
+  });
+
+  panel.querySelectorAll('a, button').forEach((element) => {
+    element.addEventListener('click', () => {
+      if (mobileQuery.matches) setOpen(false);
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && header.classList.contains('nav-open')) {
+      setOpen(false);
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!mobileQuery.matches) return;
+    if (!header.classList.contains('nav-open')) return;
+    if (header.contains(event.target)) return;
+    setOpen(false);
+  });
+
+  const syncOnViewportChange = () => {
+    if (!mobileQuery.matches) setOpen(false);
+  };
+
+  if (typeof mobileQuery.addEventListener === 'function') {
+    mobileQuery.addEventListener('change', syncOnViewportChange);
+  } else if (typeof mobileQuery.addListener === 'function') {
+    mobileQuery.addListener(syncOnViewportChange);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  document.body.classList.add('js-ready');
+  setupMobileNav();
+
   const requestCategory = document.getElementById('requestCategory');
   if(requestCategory){
     requestCategory.addEventListener('change', () => { updateConditional(); updateConditionalRequireds(); });

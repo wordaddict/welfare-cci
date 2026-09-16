@@ -191,7 +191,7 @@ async function buildSystemAssessment(db, request, docs = [], verifications = [],
     WHERE id <> ?
       AND (applicant_user_id = ? OR lower(email) = lower(?))
       AND decision IN ('Full Approval','Partial Approval','Conditional Approval')
-    ORDER BY datetime(created_at) DESC
+    ORDER BY created_at DESC
   `, [request.id, request.applicant_user_id || -1, request.email]);
   const year = new Date().getFullYear();
   const currentYearCases = priorCases.filter(c => String(c.created_at || '').startsWith(String(year)));

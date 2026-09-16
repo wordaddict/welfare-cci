@@ -4,6 +4,19 @@ const path = require('path');
 const { getAppConfig } = require('../config');
 const { validateReviewSubmission } = require('../validators/review-validator');
 
+const DASHBOARD_STATUS_ORDER = [
+  'Awaiting Leadership Verification',
+  'Awaiting Pastoral Verification',
+  'Pastoral Verification Complete',
+  'Assigned to Reviewers',
+  'Committee Review',
+  'Reviews Complete',
+  'Decision Made',
+  'Escalated to Pastorate',
+  'Follow-Up Needed',
+  'Closed'
+];
+
 function financePacketRedirectState(delivery) {
   if (!delivery || !delivery.success) return 'failed';
   if (delivery.preview) return 'previewed';
@@ -17,6 +30,129 @@ function financePacketStateForView(request, financeNotification) {
   if (financeNotification.status === 'Failed') return 'failed';
   if (financeNotification.status === 'Sent') return 'sent';
   return 'pending';
+}
+
+function toNumber(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeDashboardStatus(status) {
+  if (status === 'Awaiting Leader Verification') return 'Awaiting Pastoral Verification';
+  if (status === 'Leader Verification Complete') return 'Pastoral Verification Complete';
+  return status || 'New Request';
+}
+
+function dashboardStatusOrder(status) {
+  const normalized = normalizeDashboardStatus(status);
+  const index = DASHBOARD_STATUS_ORDER.indexOf(normalized);
+  return index === -1 ? DASHBOARD_STATUS_ORDER.length + 1 : index;
+}
+
+function dashboardStatusTone(status) {
+  const normalized = normalizeDashboardStatus(status);
+  if (normalized === 'Closed') return 'success';
+  if (normalized === 'Escalated to Pastorate') return 'danger';
+  if ([
+    'Awaiting Leadership Verification',
+    'Awaiting Pastoral Verification',
+    'Pastoral Verification Complete',
+    'Assigned to Reviewers',
+    'Committee Review',
+    'Reviews Complete',
+    'Decision Made',
+    'Follow-Up Needed'
+  ].includes(normalized)) return 'warning';
+  return 'neutral';
+}
+
+function dashboardUrgencyTone(urgency) {
+  if (urgency === 'Emergency') return 'danger';
+  if (urgency === 'Urgent') return 'warning';
+  return '';
+}
+
+function formatDashboardDate(value) {
+  if (!value) return 'Not set';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10) || 'Not set';
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatReportMonth(value) {
+  if (!value) return 'Unknown month';
+  const parsed = new Date(`${value}-01T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function buildStatusCountMap(stats) {
+  const counts = new Map();
+  for (const row of stats || []) {
+    const label = normalizeDashboardStatus(row.status);
+    counts.set(label, (counts.get(label) || 0) + toNumber(row.count));
+  }
+  return counts;
+}
+
+function sumStatusCounts(statusCounts, labels) {
+  return labels.reduce((total, label) => total + toNumber(statusCounts.get(label)), 0);
+}
+
+function requestApprovedLabel(request, money, isApprovalDecision) {
+  if (toNumber(request.amount_approved) > 0) return money(toNumber(request.amount_approved));
+  if (request.decision && isApprovalDecision(request.decision)) {
+    return money(toNumber(request.amount_requested));
+  }
+  if (request.decision === 'Denied') return 'Not approved';
+  return 'Pending';
+}
+
+function requestNextStep(request, { autoAssignReviewers }) {
+  const status = normalizeDashboardStatus(request.status);
+
+  switch (status) {
+    case 'Awaiting Leadership Verification':
+      return 'Waiting for Unit Head verification before pastoral review can begin.';
+    case 'Awaiting Pastoral Verification':
+      return 'Waiting for the pastor to complete confidential verification.';
+    case 'Pastoral Verification Complete':
+      return autoAssignReviewers
+        ? 'Pastoral verification is complete. The system can now assign reviewers automatically.'
+        : 'Pastoral verification is complete. Admin can now assign reviewers.';
+    case 'Assigned to Reviewers':
+      return 'Reviewer invitations are out. Waiting for acceptances and secure review access.';
+    case 'Committee Review':
+      return 'At least one reviewer is working the case. Waiting for both independent reviews.';
+    case 'Reviews Complete':
+      return 'Reviewer assessments are complete. The case is ready for a final committee decision.';
+    case 'Decision Made':
+      return 'Decision recorded. Finance handoff and applicant communication should be confirmed.';
+    case 'Escalated to Pastorate':
+      return 'This case needs pastorate direction before regular close-out can continue.';
+    case 'Follow-Up Needed':
+      return 'Support has been processed. Waiting for applicant close-out evidence or final closure.';
+    case 'Closed':
+      return 'Case is fully completed and closed.';
+    default:
+      return 'Open the request to review the current stage and next action.';
+  }
+}
+
+function appendRequestsStatusFilter(sqlParts, params, status) {
+  if (!status) return;
+  if (status === 'Awaiting Pastoral Verification') {
+    sqlParts.push('AND status IN (?, ?)');
+    params.push('Awaiting Pastoral Verification', 'Awaiting Leader Verification');
+    return;
+  }
+  if (status === 'Pastoral Verification Complete') {
+    sqlParts.push('AND status IN (?, ?)');
+    params.push('Pastoral Verification Complete', 'Leader Verification Complete');
+    return;
+  }
+  sqlParts.push('AND status=?');
+  params.push(status);
 }
 
 function mountAdminRoutes(app, {
@@ -52,9 +188,100 @@ function mountAdminRoutes(app, {
   app.get('/dashboard', requireRole('admin'), async (req, res) => {
     const db = await getDb();
     const stats = await db.all('SELECT status, COUNT(*) as count FROM requests GROUP BY status');
-    const recent = await db.all('SELECT * FROM requests ORDER BY created_at DESC LIMIT 8');
+    const recent = await db.all('SELECT * FROM requests ORDER BY updated_at DESC, created_at DESC LIMIT 8');
+    const categories = await db.all(`
+      SELECT request_category, COUNT(*) as count, COALESCE(SUM(amount_requested), 0) as requested
+      FROM requests
+      GROUP BY request_category
+      ORDER BY count DESC, requested DESC
+      LIMIT 5
+    `);
     const totals = await db.get('SELECT COUNT(*) as total, SUM(amount_requested) as requested, SUM(amount_approved) as approved FROM requests');
-    res.render('dashboard', { title: 'Dashboard', stats, recent, totals });
+    const statusCounts = buildStatusCountMap(stats);
+    const totalRequests = toNumber(totals.total);
+    const totalRequested = toNumber(totals.requested);
+    const totalApproved = toNumber(totals.approved);
+    const closedCount = sumStatusCounts(statusCounts, ['Closed']);
+    const openCases = Math.max(0, totalRequests - closedCount);
+    const awaitingVerification = sumStatusCounts(statusCounts, ['Awaiting Leadership Verification', 'Awaiting Pastoral Verification']);
+    const reviewQueue = sumStatusCounts(statusCounts, ['Pastoral Verification Complete', 'Assigned to Reviewers', 'Committee Review', 'Reviews Complete']);
+    const postDecision = sumStatusCounts(statusCounts, ['Decision Made', 'Escalated to Pastorate', 'Follow-Up Needed']);
+    const autoAssignReviewers = getAppConfig().jobs.autoAssignReviewers;
+
+    const summaryCards = [
+      {
+        label: 'Open Cases',
+        value: openCases,
+        caption: `${totalRequests} total requests`,
+        tone: 'neutral'
+      },
+      {
+        label: 'Requested',
+        value: money(totalRequested),
+        caption: 'Total requested',
+        tone: 'money'
+      },
+      {
+        label: 'Approved',
+        value: money(totalApproved),
+        caption: 'Total approved',
+        tone: 'success'
+      },
+      {
+        label: 'Follow-Up',
+        value: postDecision,
+        caption: `${awaitingVerification + reviewQueue} in verification or review`,
+        tone: 'warning'
+      }
+    ];
+
+    const statusSummary = Array.from(statusCounts.entries())
+      .map(([label, count]) => ({
+        label,
+        count,
+        tone: dashboardStatusTone(label),
+        href: `/requests?status=${encodeURIComponent(label)}`
+      }))
+      .sort((a, b) => {
+        const orderDelta = dashboardStatusOrder(a.label) - dashboardStatusOrder(b.label);
+        if (orderDelta !== 0) return orderDelta;
+        if (b.count !== a.count) return b.count - a.count;
+        return a.label.localeCompare(b.label);
+      });
+
+    const topCategories = (categories || []).map((category) => ({
+      name: category.request_category,
+      count: toNumber(category.count),
+      requestedLabel: money(toNumber(category.requested))
+    }));
+
+    const recentItems = (recent || []).map((request) => {
+      const status = normalizeDashboardStatus(request.status);
+      return {
+        id: request.id,
+        applicantName: request.full_name,
+        caseId: request.case_id || `Request #${request.id}`,
+        category: request.request_category || 'Financial assistance request',
+        status,
+        statusTone: dashboardStatusTone(status),
+        urgency: request.urgency || 'Standard',
+        urgencyTone: dashboardUrgencyTone(request.urgency || 'Standard'),
+        submittedLabel: formatDashboardDate(request.created_at),
+        updatedLabel: formatDashboardDate(request.updated_at || request.created_at),
+        dueLabel: request.due_date ? formatDashboardDate(request.due_date) : 'No due date',
+        decisionLabel: request.decision || 'Not decided',
+        requestedLabel: money(toNumber(request.amount_requested)),
+        approvedLabel: requestApprovedLabel(request, money, isApprovalDecision),
+        nextStep: requestNextStep(request, { autoAssignReviewers })
+      };
+    });
+    res.render('dashboard', {
+      title: 'Dashboard',
+      summaryCards,
+      statusSummary,
+      topCategories,
+      recentItems
+    });
   });
 
   app.get('/requests', requireRole('admin'), async (req, res) => {
@@ -62,12 +289,17 @@ function mountAdminRoutes(app, {
     const status = req.query.status || '';
     const category = req.query.category || '';
     const params = [];
-    let sql = 'SELECT * FROM requests WHERE 1=1';
-    if (status) { sql += ' AND status=?'; params.push(status); }
-    if (category) { sql += ' AND request_category=?'; params.push(category); }
-    sql += ' ORDER BY created_at DESC';
-    const requests = await db.all(sql, params);
-    res.render('requests', { title: 'Requests', requests, status, category });
+    const sqlParts = ['SELECT * FROM requests WHERE 1=1'];
+    appendRequestsStatusFilter(sqlParts, params, status);
+    if (category) { sqlParts.push('AND request_category=?'); params.push(category); }
+    sqlParts.push('ORDER BY created_at DESC');
+    const requests = await db.all(sqlParts.join(' '), params);
+    res.render('requests', {
+      title: 'Requests',
+      requests,
+      status,
+      category
+    });
   });
 
   app.get('/requests/:id/report', requireRole('admin'), async (req, res) => {
@@ -141,6 +373,7 @@ function mountAdminRoutes(app, {
       financeNotification,
       financePacketState: financePacketStateForView(request, financeNotification),
       financeTeamEmail: getAppConfig().jobs.financeTeamEmail,
+      reviewerAutoAssignEnabled: getAppConfig().jobs.autoAssignReviewers,
       flash: {
         decisionRecorded: req.query.decisionRecorded === '1',
         financePacket: req.query.financePacket || '',
@@ -500,10 +733,104 @@ CCI America Financial Assistance Committee`
 
   app.get('/reports', requireRole('admin'), async (req, res) => {
     const db = await getDb();
-    const byCategory = await db.all('SELECT request_category, COUNT(*) as count, SUM(amount_requested) as requested, SUM(amount_approved) as approved FROM requests GROUP BY request_category ORDER BY count DESC');
-    const byStatus = await db.all('SELECT status, COUNT(*) as count FROM requests GROUP BY status ORDER BY count DESC');
-    const byMonth = await db.all("SELECT substr(created_at,1,7) as month, COUNT(*) as count, SUM(amount_approved) as approved FROM requests GROUP BY substr(created_at,1,7) ORDER BY month DESC");
-    res.render('reports', { title: 'Reports', byCategory, byStatus, byMonth });
+    const byCategory = await db.all(`
+      SELECT request_category, COUNT(*) as count, COALESCE(SUM(amount_requested), 0) as requested, COALESCE(SUM(amount_approved), 0) as approved
+      FROM requests
+      GROUP BY request_category
+      ORDER BY count DESC, request_category ASC
+    `);
+    const rawStatus = await db.all('SELECT status, COUNT(*) as count FROM requests GROUP BY status');
+    const rawByMonth = await db.all(`
+      SELECT
+        to_char(created_at, 'YYYY-MM') as month,
+        COUNT(*) as count,
+        COALESCE(SUM(amount_approved), 0) as approved
+      FROM requests
+      GROUP BY 1
+      ORDER BY 1 DESC
+    `);
+
+    const statusCounts = buildStatusCountMap(rawStatus);
+    const totalRequests = Array.from(statusCounts.values()).reduce((sum, count) => sum + toNumber(count), 0);
+    const totalRequested = (byCategory || []).reduce((sum, row) => sum + toNumber(row.requested), 0);
+    const totalApproved = (byCategory || []).reduce((sum, row) => sum + toNumber(row.approved), 0);
+    const closedCases = sumStatusCounts(statusCounts, ['Closed', 'Declined']);
+    const openCases = Math.max(0, totalRequests - closedCases);
+    const reviewQueue = sumStatusCounts(statusCounts, ['Pastoral Verification Complete', 'Assigned to Reviewers', 'Committee Review', 'Reviews Complete']);
+    const postDecision = sumStatusCounts(statusCounts, ['Decision Made', 'Escalated to Pastorate', 'Follow-Up Needed', 'Payment Confirmed', 'Follow-Up Requested', 'Follow-Up Submitted']);
+
+    const summaryCards = [
+      {
+        label: 'Total Requests',
+        value: totalRequests,
+        caption: `${openCases} still active`,
+        tone: 'neutral'
+      },
+      {
+        label: 'Requested Volume',
+        value: money(totalRequested),
+        caption: 'Combined applicant requests',
+        tone: 'money'
+      },
+      {
+        label: 'Approved Support',
+        value: money(totalApproved),
+        caption: `${postDecision} post-decision case${postDecision === 1 ? '' : 's'}`,
+        tone: 'success'
+      },
+      {
+        label: 'Review Queue',
+        value: reviewQueue,
+        caption: 'Verification complete or under review',
+        tone: 'warning'
+      }
+    ];
+
+    const categoryRows = (byCategory || []).map((row) => ({
+      name: row.request_category,
+      count: toNumber(row.count),
+      requested: toNumber(row.requested),
+      approved: toNumber(row.approved),
+      requestedLabel: money(toNumber(row.requested)),
+      approvedLabel: money(toNumber(row.approved)),
+      href: `/requests?category=${encodeURIComponent(row.request_category)}`
+    }));
+
+    const statusRows = Array.from(statusCounts.entries())
+      .map(([label, count]) => ({
+        label,
+        count: toNumber(count),
+        tone: dashboardStatusTone(label),
+        href: `/requests?status=${encodeURIComponent(label)}`
+      }))
+      .sort((a, b) => {
+        const orderDelta = dashboardStatusOrder(a.label) - dashboardStatusOrder(b.label);
+        if (orderDelta !== 0) return orderDelta;
+        if (b.count !== a.count) return b.count - a.count;
+        return a.label.localeCompare(b.label);
+      });
+
+    const monthRows = (rawByMonth || []).map((row) => ({
+      month: row.month,
+      monthLabel: formatReportMonth(row.month),
+      count: toNumber(row.count),
+      approved: toNumber(row.approved),
+      approvedLabel: money(toNumber(row.approved))
+    }));
+
+    const reportHighlights = {
+      topCategory: categoryRows[0] || null,
+      latestMonth: monthRows[0] || null
+    };
+
+    res.render('reports', {
+      title: 'Reports',
+      summaryCards,
+      categoryRows,
+      statusRows,
+      monthRows,
+      reportHighlights
+    });
   });
 
   app.get('/reports/export.csv', requireRole('admin'), async (req, res) => {

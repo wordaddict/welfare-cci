@@ -12,6 +12,37 @@ function createReviewerWorkflow({
   sendNotification,
   withAdvisoryLock
 }) {
+  async function notifyAdminReviewerCoverageGap(db, req, request, slotsRemaining, autoAssignedCount) {
+    await logActivity(
+      request.id,
+      req && req.session && req.session.user ? req.session.user.id : null,
+      'Reviewer auto-assignment incomplete',
+      `Auto-assigned ${autoAssignedCount} reviewer(s). ${slotsRemaining} reviewer slot(s) still need attention.`
+    );
+
+    if (!req) return;
+
+    const delivery = await sendNotification({
+      db,
+      requestId: request.id,
+      recipientName: 'CCI Welfare Admin',
+      recipientEmail: appConfig.jobs.adminEmail,
+      subject: `Reviewer coverage incomplete: ${request.case_id}`,
+      body: `Automatic reviewer assignment could not fully cover ${request.case_id}.
+
+Auto-assigned reviewer slots: ${autoAssignedCount}
+Reviewer slots still open: ${slotsRemaining}
+
+Please add more active reviewers in the Reviewer Directory or assign the remaining reviewer slots manually from the Admin portal.
+
+CCI America Financial Assistance Committee`
+    });
+
+    if (!delivery.success) {
+      await logActivity(request.id, null, 'Reviewer coverage notification failed', delivery.reason || 'Email delivery failed');
+    }
+  }
+
   async function ensureTwoReviewerInvites(db, req, requestId) {
     const request = await reviewerRepository.getRequestById(db, requestId);
     if (!request) return 0;
@@ -78,18 +109,25 @@ CCI America Financial Assistance Committee`
 
     const active = await reviewerRepository.listActiveReviewerAssignments(db, requestId);
     const needed = Math.max(0, 2 - active.length);
+    let autoAssignedCount = 0;
 
     if (needed > 0 && appConfig.jobs.autoAssignReviewers) {
       const candidates = await reviewerRepository.listReviewerAutoAssignCandidates(db, requestId, needed);
 
       for (const reviewer of candidates) {
         const token = crypto.randomBytes(24).toString('hex');
-        await reviewerRepository.insertReviewerAssignmentIgnore(db, {
+        const result = await reviewerRepository.insertReviewerAssignmentIgnore(db, {
           requestId,
           reviewerId: reviewer.id,
           assignedBy: req && req.session && req.session.user ? req.session.user.id : null,
           inviteToken: token
         });
+        if (result && result.changes > 0) autoAssignedCount += 1;
+      }
+
+      const remainingSlots = Math.max(0, needed - autoAssignedCount);
+      if (remainingSlots > 0) {
+        await notifyAdminReviewerCoverageGap(db, req, request, remainingSlots, autoAssignedCount);
       }
     }
 
@@ -191,6 +229,7 @@ CCI America Financial Assistance Committee`
 
     const minutes = Math.max(1, Number(appConfig.jobs.reviewerSweepIntervalMinutes || 15));
     console.log(`[reviewer-scheduler] running every ${minutes} minute(s).`);
+    console.log(`[reviewer-scheduler] auto reviewer assignment is ${appConfig.jobs.autoAssignReviewers ? 'enabled' : 'disabled'}.`);
     if (appConfig.jobs.qstash.token) {
       console.log('[reviewer-scheduler] QStash is configured. Set RUN_SCHEDULERS=false if you want webhook-driven jobs only.');
     }

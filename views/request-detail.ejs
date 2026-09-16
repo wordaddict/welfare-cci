@@ -160,7 +160,13 @@
 
     <hr>
     <h3>Reviewer Assignment</h3>
-    <p class="muted">Choose reviewers from the Admin-managed Reviewer Directory. Reviewers do not log in. They first receive an invitation link. After accepting, the system emails a second secure link for the actual confidential review.</p>
+    <p class="muted">
+      <% if (reviewerAutoAssignEnabled) { %>
+        Automatic reviewer assignment is enabled. Once pastoral verification is complete, the system will try to select up to two active reviewers from the Reviewer Directory and send invitation links automatically.
+      <% } else { %>
+        Automatic reviewer assignment is currently disabled. Choose reviewers from the Admin-managed Reviewer Directory. Reviewers do not log in. They first receive an invitation link. After accepting, the system emails a second secure link for the actual confidential review.
+      <% } %>
+    </p>
 
     <% if (assignedReviewers && assignedReviewers.length) { %>
       <div class="assigned-reviewer-list">
@@ -179,7 +185,16 @@
         <% }) %>
       </div>
     <% } else { %>
-      <div class="empty-state"><b>No reviewers assigned yet.</b><p>Select a reviewer below. You can assign reviewers before verification is complete; invitations will be sent when pastoral verification is complete.</p></div>
+      <div class="empty-state">
+        <b>No reviewers assigned yet.</b>
+        <p>
+          <% if (reviewerAutoAssignEnabled) { %>
+            Once pastoral verification is complete, the system will try to assign reviewers automatically. You can still assign them manually below if you want to control who gets the case.
+          <% } else { %>
+            Select a reviewer below. You can assign reviewers before verification is complete; invitations will be sent when pastoral verification is complete.
+          <% } %>
+        </p>
+      </div>
     <% } %>
 
     <form method="post" action="/requests/<%= request.id %>/assign-reviewer" class="stacked-form">
@@ -196,127 +211,142 @@
   </aside>
 </div>
 
-<div class="two case-section">
+<div class="request-detail-columns case-section <%= request.worker_status === 'Yes' ? '' : 'request-detail-columns--single' %>">
   <% if (request.worker_status === 'Yes') { %>
-  <section class="card panel-card leadership-panel">
-    <div class="section-title-row">
-      <div>
-        <p class="eyebrow dark">Leadership verification</p>
-        <h2>Unit Head Verification</h2>
-      </div>
-      <span class="status-pill <%= request.unit_leader_verified === 'Complete' ? 'success' : 'warning' %>"><%= request.unit_leader_verified || 'Pending' %></span>
-    </div>
-    <h3 class="mini-heading">Unit Head identified by applicant</h3>
-    <div class="info-grid compact leader-contact-grid">
-      <div><span>Unit</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
-      <div><span>Unit Head</span><strong><%= request.unit_leader_name || 'Not provided' %></strong></div>
-      <div><span>Email</span><strong class="wrap-text"><%= request.unit_leader_email || 'Not provided' %></strong></div>
-      <div><span>Phone</span><strong><%= request.unit_leader_phone || 'Not provided' %></strong></div>
-    </div>
-    <% if (request.unit_leader_verification_token && (!leadershipVerifications || !leadershipVerifications.length)) { %>
-      <div class="subtle-note"><b>Local test link:</b> <a href="/leadership-verify/<%= request.unit_leader_verification_token %>" target="_blank">Open leadership verification form</a></div>
-    <% } %>
-    <% if (!leadershipVerifications || !leadershipVerifications.length) { %>
-      <div class="empty-state"><b>No leadership response yet.</b><p>The Unit Head must complete this verification before pastoral verification begins.</p></div>
-    <% } %>
-    <% (leadershipVerifications || []).forEach(v => { %>
-      <div class="leader-response-card">
-        <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= formatDateTime(v.created_at) %></small></div>
-        <div class="info-grid compact leader-contact-grid">
-          <div><span>Confirmed Celeforce worker status</span><strong><%= v.worker_confirmed %></strong></div>
-          <div><span>Confirmed service in stated unit</span><strong><%= v.unit_confirmed %></strong></div>
-          <div><span>Verified length of service in unit</span><strong><%= v.service_duration_value %> <%= v.service_duration_unit %></strong></div>
-          <div><span>Unit verified</span><strong><%= v.unit_name || request.unit_name %></strong></div>
+    <div class="request-detail-column">
+      <section class="card panel-card leadership-panel">
+        <div class="section-title-row">
+          <div>
+            <p class="eyebrow dark">Leadership verification</p>
+            <h2>Unit Head Verification</h2>
+          </div>
+          <span class="status-pill <%= request.unit_leader_verified === 'Complete' ? 'success' : 'warning' %>"><%= request.unit_leader_verified || 'Pending' %></span>
         </div>
-        <% if (v.worker_confirmed !== request.worker_status || v.unit_confirmed !== 'Yes') { %>
-          <div class="alert"><b>Verification mismatch:</b> The Unit Head's verification does not fully match the applicant's Celeforce or unit information.</div>
+        <h3 class="mini-heading">Unit Head identified by applicant</h3>
+        <div class="info-grid compact leader-contact-grid">
+          <div><span>Unit</span><strong><%= request.unit_name || 'Not provided' %></strong></div>
+          <div><span>Unit Head</span><strong><%= request.unit_leader_name || 'Not provided' %></strong></div>
+          <div><span>Email</span><strong class="wrap-text"><%= request.unit_leader_email || 'Not provided' %></strong></div>
+          <div><span>Phone</span><strong><%= request.unit_leader_phone || 'Not provided' %></strong></div>
+        </div>
+        <% if (request.unit_leader_verification_token && (!leadershipVerifications || !leadershipVerifications.length)) { %>
+          <div class="subtle-note"><b>Local test link:</b> <a href="/leadership-verify/<%= request.unit_leader_verification_token %>" target="_blank">Open leadership verification form</a></div>
         <% } %>
-        <div class="leader-text-block"><span>Unit Head's comments</span><p><%= v.comments %></p></div>
-      </div>
-    <% }) %>
-  </section>
+        <% if (!leadershipVerifications || !leadershipVerifications.length) { %>
+          <div class="empty-state"><b>No leadership response yet.</b><p>The Unit Head must complete this verification before pastoral verification begins.</p></div>
+        <% } %>
+        <% (leadershipVerifications || []).forEach(v => { %>
+          <div class="leader-response-card">
+            <div class="leader-response-header"><div><span>Submitted by Unit Head</span><strong><%= v.verifier_name %></strong></div><small><%= formatDateTime(v.created_at) %></small></div>
+            <div class="info-grid compact leader-contact-grid">
+              <div><span>Confirmed Celeforce worker status</span><strong><%= v.worker_confirmed %></strong></div>
+              <div><span>Confirmed service in stated unit</span><strong><%= v.unit_confirmed %></strong></div>
+              <div><span>Verified length of service in unit</span><strong><%= v.service_duration_value %> <%= v.service_duration_unit %></strong></div>
+              <div><span>Unit verified</span><strong><%= v.unit_name || request.unit_name %></strong></div>
+            </div>
+            <% if (v.worker_confirmed !== request.worker_status || v.unit_confirmed !== 'Yes') { %>
+              <div class="alert"><b>Verification mismatch:</b> The Unit Head's verification does not fully match the applicant's Celeforce or unit information.</div>
+            <% } %>
+            <div class="leader-text-block"><span>Unit Head's comments</span><p><%= v.comments %></p></div>
+          </div>
+        <% }) %>
+      </section>
+
+      <section class="card panel-card request-detail-documents-panel">
+        <h2>Documents</h2>
+        <% if (!docs.length) { %><p class="muted">No documents uploaded.</p><% } else { %>
+          <ul class="doc-list"><% docs.forEach(d=>{ %><li><a href="/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a><span><%= d.document_type || 'Supporting document' %> · <%= Math.round(d.size_bytes/1024) %> KB</span></li><% }) %></ul>
+        <% } %>
+      </section>
+    </div>
   <% } %>
 
-  <section class="card panel-card leadership-panel">
-    <div class="section-title-row">
-      <div>
-        <p class="eyebrow dark">Pastoral verification</p>
-        <h2>Pastoral Verification</h2>
+  <div class="request-detail-column">
+    <section class="card panel-card leadership-panel">
+      <div class="section-title-row">
+        <div>
+          <p class="eyebrow dark">Pastoral verification</p>
+          <h2>Pastoral Verification</h2>
+        </div>
+        <span class="status-pill <%= request.leader_verified === 'Complete' || request.leader_verified === 'Yes' ? 'success' : request.leader_verified === 'Pending' ? '' : 'warning' %>"><%= request.leader_verified %></span>
       </div>
-      <span class="status-pill <%= request.leader_verified === 'Complete' || request.leader_verified === 'Yes' ? 'success' : request.leader_verified === 'Pending' ? '' : 'warning' %>"><%= request.leader_verified %></span>
-    </div>
 
-    <h3 class="mini-heading">Pastor identified by applicant</h3>
-    <div class="info-grid compact leader-contact-grid">
-      <div><span>Name</span><strong><%= request.leader_name %></strong></div>
-      <div><span>Role</span><strong>Pastor</strong></div>
-      <div><span>Email</span><strong class="wrap-text"><%= request.leader_email || 'Not provided' %></strong></div>
-      <div><span>Phone</span><strong><%= request.leader_phone || 'Not provided' %></strong></div>
-    </div>
-
-    <% if (request.leader_verification_token && !verifications.length && (request.worker_status !== 'Yes' || request.unit_leader_verified === 'Complete')) { %>
-      <div class="subtle-note"><b>Local test link:</b> <a href="/pastor-verify/<%= request.leader_verification_token %>" target="_blank">Open pastoral verification form</a></div>
-    <% } %>
-
-    <% if (!verifications.length) { %>
-      <div class="empty-state">
-        <b>No pastoral response yet.</b>
-        <p>The Pastor's submitted answers will appear here for admins, committee members, and reviewers once the pastoral verification form is completed.</p>
+      <h3 class="mini-heading">Pastor identified by applicant</h3>
+      <div class="info-grid compact leader-contact-grid">
+        <div><span>Name</span><strong><%= request.leader_name %></strong></div>
+        <div><span>Role</span><strong>Pastor</strong></div>
+        <div><span>Email</span><strong class="wrap-text"><%= request.leader_email || 'Not provided' %></strong></div>
+        <div><span>Phone</span><strong><%= request.leader_phone || 'Not provided' %></strong></div>
       </div>
-    <% } %>
 
-    <% verifications.forEach(v=>{ %>
-      <div class="leader-response-card">
-        <div class="leader-response-header">
-          <div>
-            <span>Submitted by Pastor</span>
-            <strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong>
+      <% if (request.leader_verification_token && !verifications.length && (request.worker_status !== 'Yes' || request.unit_leader_verified === 'Complete')) { %>
+        <div class="subtle-note"><b>Local test link:</b> <a href="/pastor-verify/<%= request.leader_verification_token %>" target="_blank">Open pastoral verification form</a></div>
+      <% } %>
+
+      <% if (!verifications.length) { %>
+        <div class="empty-state">
+          <b>No pastoral response yet.</b>
+          <p>The Pastor's submitted answers will appear here for admins, committee members, and reviewers once the pastoral verification form is completed.</p>
+        </div>
+      <% } %>
+
+      <% verifications.forEach(v=>{ %>
+        <div class="leader-response-card">
+          <div class="leader-response-header">
+            <div>
+              <span>Submitted by Pastor</span>
+              <strong><%= v.verifier_name || request.leader_name || 'Pastor' %></strong>
+            </div>
+            <small><%= formatDateTime(v.created_at) %></small>
           </div>
-          <small><%= formatDateTime(v.created_at) %></small>
-        </div>
 
-        <div class="info-grid compact leader-contact-grid">
-          <div><span>Pastor name</span><strong><%= v.verifier_name || request.leader_name || 'Not provided' %></strong></div>
-          <div><span>Pastor email</span><strong class="wrap-text"><%= v.verifier_email || request.leader_email || 'Not provided' %></strong></div>
-          <div><span>Pastor phone</span><strong><%= v.verifier_phone || request.leader_phone || 'Not provided' %></strong></div>
-          <div><span>Current CCI participation confirmed by Pastor</span><strong><%= v.active_connection || 'Not recorded' %></strong></div>
-          <div><span>Official CCI membership confirmed by Pastor</span><strong><%= v.member_confirmed || 'Not recorded' %></strong></div>
-          <div><span>Celeforce worker status confirmed by Pastor</span><strong><%= v.worker_confirmed || 'Not recorded' %></strong></div>
-          <div><span>Length of time Pastor has known applicant</span><strong><%= v.known_duration_value ? `${v.known_duration_value} ${v.known_duration_unit || ''}` : 'Not recorded' %></strong></div>
-        </div>
+          <div class="info-grid compact leader-contact-grid">
+            <div><span>Pastor name</span><strong><%= v.verifier_name || request.leader_name || 'Not provided' %></strong></div>
+            <div><span>Pastor email</span><strong class="wrap-text"><%= v.verifier_email || request.leader_email || 'Not provided' %></strong></div>
+            <div><span>Pastor phone</span><strong><%= v.verifier_phone || request.leader_phone || 'Not provided' %></strong></div>
+            <div><span>Current CCI participation confirmed by Pastor</span><strong><%= v.active_connection || 'Not recorded' %></strong></div>
+            <div><span>Official CCI membership confirmed by Pastor</span><strong><%= v.member_confirmed || 'Not recorded' %></strong></div>
+            <div><span>Celeforce worker status confirmed by Pastor</span><strong><%= v.worker_confirmed || 'Not recorded' %></strong></div>
+            <div><span>Length of time Pastor has known applicant</span><strong><%= v.known_duration_value ? `${v.known_duration_value} ${v.known_duration_unit || ''}` : 'Not recorded' %></strong></div>
+          </div>
 
-        <% if ((v.member_confirmed && v.member_confirmed !== request.membership_status) || (v.worker_confirmed && v.worker_confirmed !== (request.worker_status || 'No'))) { %>
-          <div class="alert"><b>Verification mismatch:</b> The Pastor's membership and/or worker verification does not match the applicant's answer. Please review before deciding this case.</div>
+          <% if ((v.member_confirmed && v.member_confirmed !== request.membership_status) || (v.worker_confirmed && v.worker_confirmed !== (request.worker_status || 'No'))) { %>
+            <div class="alert"><b>Verification mismatch:</b> The Pastor's membership and/or worker verification does not match the applicant's answer. Please review before deciding this case.</div>
+          <% } %>
+
+          <div class="leader-text-block">
+            <span>Pastor's comments / information for decision</span>
+            <p><%= v.decision_comments || v.pastoral_context || 'No comments recorded.' %></p>
+          </div>
+
+          <% if (v.support_letter_file) { %>
+            <a class="btn btn-soft" href="/uploads/<%= v.support_letter_file %>" target="_blank">View additional pastoral support letter</a>
+          <% } %>
+        </div>
+      <% }) %>
+    </section>
+
+    <% if (request.worker_status !== 'Yes') { %>
+      <section class="card panel-card request-detail-documents-panel">
+        <h2>Documents</h2>
+        <% if (!docs.length) { %><p class="muted">No documents uploaded.</p><% } else { %>
+          <ul class="doc-list"><% docs.forEach(d=>{ %><li><a href="/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a><span><%= d.document_type || 'Supporting document' %> · <%= Math.round(d.size_bytes/1024) %> KB</span></li><% }) %></ul>
         <% } %>
-
-        <div class="leader-text-block">
-          <span>Pastor's comments / information for decision</span>
-          <p><%= v.decision_comments || v.pastoral_context || 'No comments recorded.' %></p>
-        </div>
-
-        <% if (v.support_letter_file) { %>
-          <a class="btn btn-soft" href="/uploads/<%= v.support_letter_file %>" target="_blank">View additional pastoral support letter</a>
-        <% } %>
-      </div>
-    <% }) %>
-  </section>
-
-  <section class="card panel-card">
-    <h2>Documents</h2>
-    <% if (!docs.length) { %><p class="muted">No documents uploaded.</p><% } else { %>
-      <ul class="doc-list"><% docs.forEach(d=>{ %><li><a href="/uploads/<%= d.stored_name %>" target="_blank"><%= d.original_name %></a><span><%= d.document_type || 'Supporting document' %> · <%= Math.round(d.size_bytes/1024) %> KB</span></li><% }) %></ul>
+      </section>
     <% } %>
-  </section>
+  </div>
 </div>
 
-<section class="card panel-card">
+<section class="card panel-card review-assessments-card">
   <div class="section-title-row">
     <div>
       <p class="eyebrow dark">Admin only</p>
       <h2>Reviewer Assessments</h2>
     </div>
-    <a class="btn btn-soft" href="/requests/<%= request.id %>/report">Generate Report</a>
-          <a class="btn btn-soft" href="/requests/<%= request.id %>/report/download">Download Report PDF</a>
+    <div class="section-title-actions">
+      <a class="btn btn-soft" href="/requests/<%= request.id %>/report">Generate Report</a>
+      <a class="btn btn-soft" href="/requests/<%= request.id %>/report/download">Download Report PDF</a>
+    </div>
   </div>
   <p class="muted">Only Admin can see all reviewer assessments. Reviewers see only the single case assigned to their secure review link and cannot see one another’s reviews.</p>
   <% if (reviews.length) { %>

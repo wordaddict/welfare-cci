@@ -1,47 +1,77 @@
 <%- include('partials_header') %>
-<section class="section-title-row">
-  <div>
-    <p class="eyebrow dark">Admin</p>
-    <h1 class="section-title">Reviewer Directory</h1>
-    <p class="muted">Reviewers do not have accounts or passwords. Add their name and email here, then assign them to cases. They receive secure links by email.</p>
+<div class="admin-directory-shell">
+  <section class="page-heading admin-directory-heading">
+    <div>
+      <p class="eyebrow dark">Admin</p>
+      <h1>Reviewer Directory</h1>
+      <p class="muted">Reviewers do not have accounts or passwords. Add their name and email here, then assign them to cases and send secure review links.</p>
+    </div>
+    <div class="admin-directory-summary">
+      <strong><%= reviewers.length %></strong>
+      <span><%= reviewers.length === 1 ? 'reviewer available' : 'reviewers available' %></span>
+    </div>
+  </section>
+
+  <% if (error) { %><p class="alert"><%= error %></p><% } %>
+  <% if (added) { %><div class="success-panel"><b>Reviewer saved.</b><p>The reviewer is now available for case assignment.</p></div><% } %>
+
+  <div class="admin-directory-grid">
+    <section class="card panel-card admin-directory-panel">
+      <div class="admin-directory-panel-copy">
+        <h2>Add Reviewer</h2>
+        <p class="muted small">Store a reviewer as a secure contact so the system can assign cases and send one-time access links.</p>
+      </div>
+      <form method="post" action="/admin/reviewers" class="stacked-form">
+        <label>Reviewer full name<input name="name" required></label>
+        <label>Email address<input name="email" type="email" required></label>
+        <button class="btn">Add to Reviewer Directory</button>
+      </form>
+      <p class="fine-print">No password is created for the reviewer. The system stores the reviewer as a non-login contact and sends secure invitation and review links.</p>
+    </section>
+
+    <section class="card panel-card admin-directory-panel">
+      <div class="admin-directory-panel-copy">
+        <h2>Reviewers</h2>
+        <p class="muted small">Track availability and assignment volume at a glance before sending new cases out.</p>
+      </div>
+      <% if (!reviewers.length) { %><div class="empty-state"><b>No reviewers yet.</b><p>Add the first reviewer using the form.</p></div><% } %>
+      <% if (reviewers.length) { %>
+        <div class="directory-list">
+          <% reviewers.forEach(r => { %>
+            <article class="directory-list-item">
+              <div class="directory-list-main">
+                <div class="directory-list-top">
+                  <div class="directory-list-identity">
+                    <h3><%= r.name %></h3>
+                    <p><%= r.email %></p>
+                  </div>
+                  <span class="directory-pill <%= r.active ? 'directory-pill--success' : 'directory-pill--muted' %>"><%= r.active ? 'Active' : 'Inactive' %></span>
+                </div>
+                <div class="directory-metrics">
+                  <div>
+                    <span>Open</span>
+                    <strong><%= r.open_reviews || 0 %></strong>
+                  </div>
+                  <div>
+                    <span>Completed</span>
+                    <strong><%= r.completed_reviews || 0 %></strong>
+                  </div>
+                  <div>
+                    <span>Assignments</span>
+                    <strong><%= r.total_assignments || 0 %></strong>
+                  </div>
+                </div>
+              </div>
+              <div class="directory-list-actions">
+                <form method="post" action="/admin/reviewers/<%= r.id %>/toggle">
+                  <button class="btn btn-soft directory-action-btn"><%= r.active ? 'Deactivate' : 'Activate' %></button>
+                </form>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      <% } %>
+    </section>
   </div>
-</section>
-
-<% if (error) { %><p class="alert"><%= error %></p><% } %>
-<% if (added) { %><div class="success-panel"><b>Reviewer saved.</b><p>The reviewer is now available for case assignment.</p></div><% } %>
-
-<div class="split">
-  <section class="card panel-card">
-    <h2>Add Reviewer</h2>
-    <form method="post" action="/admin/reviewers" class="stacked-form">
-      <label>Reviewer full name<input name="name" required></label>
-      <label>Email address<input name="email" type="email" required></label>
-      <button class="btn">Add to Reviewer Directory</button>
-    </form>
-    <p class="fine-print">No password is created for the reviewer. The system stores the reviewer as a non-login contact and sends secure invitation/review links.</p>
-  </section>
-
-  <section class="card panel-card">
-    <h2>Reviewers</h2>
-    <% if (!reviewers.length) { %><div class="empty-state"><b>No reviewers yet.</b><p>Add the first reviewer using the form.</p></div><% } %>
-    <% if (reviewers.length) { %>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Open</th><th>Completed</th><th>Assignments</th><th></th></tr></thead>
-        <tbody>
-        <% reviewers.forEach(r => { %>
-          <tr>
-            <td><strong><%= r.name %></strong></td>
-            <td><%= r.email %></td>
-            <td><%= r.active ? 'Active' : 'Inactive' %></td>
-            <td><%= r.open_reviews || 0 %></td>
-            <td><%= r.completed_reviews || 0 %></td>
-            <td><%= r.total_assignments || 0 %></td>
-            <td><form method="post" action="/admin/reviewers/<%= r.id %>/toggle"><button class="small"><%= r.active ? 'Deactivate' : 'Activate' %></button></form></td>
-          </tr>
-        <% }) %>
-        </tbody>
-      </table></div>
-    <% } %>
-  </section>
 </div>
 <%- include('partials_footer') %>

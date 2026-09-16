@@ -46,7 +46,7 @@ async function listReviewerAutoAssignCandidates(db, requestId, needed) {
 
 async function insertReviewerAssignmentIgnore(db, { requestId, reviewerId, assignedBy, inviteToken }) {
   return db.run(
-    'INSERT OR IGNORE INTO request_reviewers (request_id, reviewer_id, assigned_by, invite_token) VALUES (?,?,?,?)',
+    'INSERT INTO request_reviewers (request_id, reviewer_id, assigned_by, invite_token) VALUES (?,?,?,?) ON CONFLICT DO NOTHING',
     [requestId, reviewerId, assignedBy, inviteToken]
   );
 }
