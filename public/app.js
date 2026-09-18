@@ -166,9 +166,26 @@ function setupMobileNav() {
   }
 }
 
+function setupPasswordReveal() {
+  document.querySelectorAll('[data-password-reveal-toggle]').forEach(toggle => {
+    const field = toggle.closest('.password-reveal-field');
+    const input = field ? field.querySelector('[data-password-reveal-input]') : null;
+    if (!input) return;
+
+    toggle.addEventListener('click', () => {
+      const showPassword = input.type === 'password';
+      input.type = showPassword ? 'text' : 'password';
+      toggle.textContent = showPassword ? 'Hide' : 'Show';
+      toggle.setAttribute('aria-label', showPassword ? 'Hide password' : 'Show password');
+      toggle.setAttribute('aria-pressed', String(showPassword));
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.body.classList.add('js-ready');
   setupMobileNav();
+  setupPasswordReveal();
 
   const requestCategory = document.getElementById('requestCategory');
   if(requestCategory){

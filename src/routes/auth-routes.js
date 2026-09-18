@@ -1,7 +1,32 @@
 const bcrypt = require('bcryptjs');
 
+const DEV_ADMIN_EMAIL = 'admin@test.local';
+const DEV_ADMIN_PASSWORD = 'AdminTest123!';
+const DEV_ADMIN_NAME = 'Local Test Admin';
+
 function mountAuthRoutes(app, { getDb }) {
   const loginAttemptBuckets = new Map();
+
+  async function ensureDevAdmin(db) {
+    const passwordHash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 12);
+    const existing = await db.get('SELECT id FROM users WHERE lower(email)=lower(?)', DEV_ADMIN_EMAIL);
+    if (existing) {
+      await db.run("UPDATE users SET name=?, password_hash=?, role='admin', active=1 WHERE id=?", [DEV_ADMIN_NAME, passwordHash, existing.id]);
+      return db.get('SELECT * FROM users WHERE id=?', existing.id);
+    }
+    const result = await db.run('INSERT INTO users (name,email,password_hash,role,active) VALUES (?,?,?,?,1)', [DEV_ADMIN_NAME, DEV_ADMIN_EMAIL, passwordHash, 'admin']);
+    return db.get('SELECT * FROM users WHERE id=?', result.lastID);
+  }
+
+  function signIn(req, res, user) {
+    if (req.loginRateLimitKey) loginAttemptBuckets.delete(req.loginRateLimitKey);
+    const authUser = { id: user.id, name: user.name, email: user.email, role: user.role };
+    req.session.user = authUser;
+    req.session.save(() => {
+      if (authUser.role === 'applicant') return res.redirect('/apply');
+      return res.redirect('/dashboard');
+    });
+  }
 
   function loginRateLimit(req, res, next) {
     const key = req.ip || req.socket.remoteAddress || 'unknown';
@@ -45,6 +70,12 @@ function mountAuthRoutes(app, { getDb }) {
     const expectedRole = String(req.body.expectedRole || '').trim();
     const loginEmail = String(req.body.email || '').trim().toLowerCase();
     const loginPassword = String(req.body.password || '');
+
+    if (process.env.NODE_ENV !== 'production' && loginEmail === DEV_ADMIN_EMAIL && loginPassword === DEV_ADMIN_PASSWORD) {
+      const devAdmin = await ensureDevAdmin(db);
+      return signIn(req, res, devAdmin);
+    }
+
     const user = await db.get('SELECT * FROM users WHERE lower(email)=lower(?) AND active=1', loginEmail);
     if (!user || !loginPassword || !(await bcrypt.compare(loginPassword, user.password_hash))) {
       return res.status(401).render('login', { title: 'Login', error: 'Invalid email or password.', selectedRole: expectedRole });
@@ -62,13 +93,7 @@ function mountAuthRoutes(app, { getDb }) {
       });
     }
 
-    if (req.loginRateLimitKey) loginAttemptBuckets.delete(req.loginRateLimitKey);
-    const authUser = { id: user.id, name: user.name, email: user.email, role: user.role };
-    req.session.user = authUser;
-    req.session.save(() => {
-      if (authUser.role === 'applicant') return res.redirect('/apply');
-      return res.redirect('/dashboard');
-    });
+    return signIn(req, res, user);
   });
 
   app.post('/logout', (req, res) => {

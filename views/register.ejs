@@ -8,7 +8,12 @@
     <form method="post" action="/register" class="form compact-form">
       <label>Full name<input name="name" required autocomplete="name"></label>
       <label>Email<input name="email" type="email" required autocomplete="email"></label>
-      <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <label>Password
+        <span class="password-reveal-field">
+          <input name="password" type="password" minlength="8" required autocomplete="new-password" data-password-reveal-input>
+          <button type="button" class="password-reveal-toggle" data-password-reveal-toggle aria-label="Show password" aria-pressed="false">Show</button>
+        </span>
+      </label>
       <button class="btn btn-primary">Create Account</button>
     </form>
     <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>

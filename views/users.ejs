@@ -23,7 +23,12 @@
       <form method="post" action="/admin/users" class="stacked-form">
         <label>Name<input name="name" required></label>
         <label>Email<input name="email" type="email" required></label>
-        <label>Password<input name="password" type="password" minlength="8" required></label>
+        <label>Password
+          <span class="password-reveal-field">
+            <input name="password" type="password" minlength="8" required data-password-reveal-input>
+            <button type="button" class="password-reveal-toggle" data-password-reveal-toggle aria-label="Show password" aria-pressed="false">Show</button>
+          </span>
+        </label>
         <label>Role<select name="role" required><option value="applicant">Applicant</option><option value="admin">Admin</option></select></label>
         <button class="btn">Create Account</button>
       </form>

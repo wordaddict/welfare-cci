@@ -573,6 +573,11 @@ body{
 .urgency-form{margin-top:18px;}
 .fine-print{font-size:.9rem;color:#667085;font-weight:650;}
 
+.password-reveal-field{display:flex;align-items:center;gap:8px;}
+.password-reveal-field input{flex:1;min-width:0;}
+.password-reveal-toggle{border:1px solid #D0D5DD;background:#fff;color:#344054;border-radius:10px;padding:10px 12px;font-weight:850;cursor:pointer;}
+.password-reveal-toggle:focus{outline:3px solid rgba(227,6,19,.18);outline-offset:2px;}
+
 
 /* --- V10 app footer + one-page finance report --- */
 .app-credit{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;font-size:.92rem;}

@@ -22,7 +22,10 @@
         <input name="email" type="email" autocomplete="username" required>
       </label>
       <label>Password
-        <input name="password" type="password" autocomplete="current-password" required>
+        <span class="password-reveal-field">
+          <input name="password" type="password" autocomplete="current-password" required data-password-reveal-input>
+          <button type="button" class="password-reveal-toggle" data-password-reveal-toggle aria-label="Show password" aria-pressed="false">Show</button>
+        </span>
       </label>
       <button class="btn btn-primary login-full-btn">Log in</button>
     </form>
