@@ -2328,6 +2328,7 @@ h1 {
 .directory-list-actions {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 .directory-list-actions form {
   margin: 0;
@@ -2335,6 +2336,16 @@ h1 {
 .directory-action-btn {
   min-width: 136px;
   justify-content: center;
+}
+.btn-danger-soft {
+  color: #B42318;
+  border-color: #FDA29B;
+  background: #FFF1F0;
+}
+.btn-danger-soft:hover {
+  color: #8F1118;
+  border-color: #F97066;
+  background: #FFE4E2;
 }
 
 @media (max-width: 980px) {

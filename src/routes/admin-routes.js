@@ -910,6 +910,37 @@ CCI America Financial Assistance Committee`
     await db.run("UPDATE users SET active = CASE active WHEN 1 THEN 0 ELSE 1 END WHERE id=? AND role IN ('admin','applicant')", req.params.id);
     res.redirect('/admin/users');
   });
+
+  app.post('/admin/users/:id/delete', requireRole('admin'), async (req, res) => {
+    const db = await getDb();
+    const renderUsersError = async (message) => {
+      const users = await db.all("SELECT id,name,email,role,active,created_at FROM users WHERE role IN ('admin','applicant') ORDER BY created_at DESC");
+      return res.status(400).render('users', { title: 'Login Accounts', users, error: message });
+    };
+    const user = await db.get("SELECT id,name,email,role,active FROM users WHERE id=? AND role IN ('admin','applicant')", req.params.id);
+    if (!user) return res.redirect('/admin/users');
+    if (Number(user.id) === Number(req.session.user.id)) {
+      return renderUsersError('You cannot delete your own active login account.');
+    }
+    if (user.role === 'admin' && user.active) {
+      const adminCount = await db.get("SELECT COUNT(*) AS count FROM users WHERE role='admin' AND active=1");
+      if ((adminCount.count || 0) <= 1) {
+        return renderUsersError('You cannot delete the last active admin account.');
+      }
+    }
+    const payment = await db.get('SELECT id FROM payments WHERE processed_by=? LIMIT 1', user.id);
+    const followup = await db.get('SELECT id FROM followups WHERE completed_by=? LIMIT 1', user.id);
+    if (payment || followup) {
+      return renderUsersError('This account is tied to payment or follow-up records. Deactivate it instead to preserve the audit trail.');
+    }
+    await db.run('UPDATE requests SET applicant_user_id=NULL WHERE applicant_user_id=?', user.id);
+    await db.run('UPDATE requests SET assigned_reviewer_1=NULL WHERE assigned_reviewer_1=?', user.id);
+    await db.run('UPDATE requests SET assigned_reviewer_2=NULL WHERE assigned_reviewer_2=?', user.id);
+    await db.run('UPDATE leader_verifications SET verified_by=NULL WHERE verified_by=?', user.id);
+    await db.run("DELETE FROM users WHERE id=? AND role IN ('admin','applicant')", req.params.id);
+    await logActivity(null, req.session.user.id, 'Login account deleted', `${user.email} (${user.role})`);
+    res.redirect('/admin/users');
+  });
 }
 
 module.exports = {

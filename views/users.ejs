@@ -60,6 +60,9 @@
                 <form method="post" action="/admin/users/<%= u.id %>/toggle">
                   <button class="btn btn-soft directory-action-btn"><%= u.active ? 'Deactivate' : 'Activate' %></button>
                 </form>
+                <form method="post" action="/admin/users/<%= u.id %>/delete" onsubmit="return confirm('Delete this login account permanently?');">
+                  <button class="btn btn-soft btn-danger-soft directory-action-btn">Delete</button>
+                </form>
               </div>
             </article>
           <% }) %>
