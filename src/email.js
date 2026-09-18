@@ -89,10 +89,10 @@ function mapNodemailerAttachments(attachments = []) {
   }));
 }
 
-async function sendEmailDetailed({ to, subject, text, html, recipientName, attachments = [] }) {
+async function sendEmailDetailed({ to, cc, subject, text, html, recipientName, attachments = [] }) {
   const config = getAppConfig();
   if (config.email.disabled) {
-    console.log('Email notifications disabled via DISABLE_EMAIL_NOTIFICATIONS. Email would be sent:', { to, subject });
+    console.log('Email notifications disabled via DISABLE_EMAIL_NOTIFICATIONS. Email would be sent:', { to, cc, subject });
     return { success: true, provider: 'disabled', reason: 'DISABLE_EMAIL_NOTIFICATIONS=true', preview: true };
   }
 
@@ -103,6 +103,7 @@ async function sendEmailDetailed({ to, subject, text, html, recipientName, attac
       const response = await resend.emails.send({
         from: config.email.from,
         to: Array.isArray(to) ? to : [to],
+        cc: cc && cc.length ? cc : undefined,
         subject,
         html: htmlBody,
         text,
@@ -135,6 +136,7 @@ async function sendEmailDetailed({ to, subject, text, html, recipientName, attac
       const result = await transporter.sendMail({
         from: config.email.from,
         to,
+        cc,
         subject,
         text,
         html: htmlBody,
@@ -156,6 +158,7 @@ async function sendEmailDetailed({ to, subject, text, html, recipientName, attac
 
   console.log('\n--- EMAIL PREVIEW ---');
   console.log('To:', to);
+  if (cc && cc.length) console.log('Cc:', cc.join(', '));
   console.log('Subject:', subject);
   console.log(text);
   if (attachments.length) {

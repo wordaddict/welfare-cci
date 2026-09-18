@@ -1,6 +1,6 @@
 const { sendEmailDetailed } = require('./email');
 
-async function sendNotification({ db, requestId, recipientName, recipientEmail, subject, body, attachments = [] }) {
+async function sendNotification({ db, requestId, recipientName, recipientEmail, cc = [], subject, body, attachments = [] }) {
   const saved = await db.run(
     'INSERT INTO notifications (request_id, recipient_name, recipient_email, subject, body, status) VALUES (?,?,?,?,?,?)',
     [requestId || null, recipientName || '', recipientEmail, subject, body, 'Queued']
@@ -8,6 +8,7 @@ async function sendNotification({ db, requestId, recipientName, recipientEmail, 
 
   const result = await sendEmailDetailed({
     to: recipientEmail,
+    cc,
     subject,
     text: body,
     recipientName,

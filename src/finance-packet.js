@@ -248,6 +248,7 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
     const { request, docs, verifications, assignedReviewers, reviews, reviewSummary } = await getDecisionArtifacts(db, requestId);
     if (!request) return;
     const financeEmail = appConfig.jobs.financeTeamEmail;
+    const financeCcEmails = appConfig.jobs.financeTeamCcEmails || [];
     const financeName = appConfig.jobs.financeTeamName;
     const approved = isApprovalDecision(request.decision);
     let token = request.finance_confirm_token;
@@ -305,6 +306,7 @@ CCI America Financial Assistance Committee`;
       requestId: request.id,
       recipientName: financeName,
       recipientEmail: financeEmail,
+      cc: financeCcEmails,
       subject,
       body,
       attachments: [{
@@ -324,7 +326,7 @@ CCI America Financial Assistance Committee`;
     }
 
     await db.run('UPDATE requests SET finance_packet_sent_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
-    await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet emailed', `Sent to ${financeEmail} with committee decision: ${request.decision}`);
+    await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet emailed', `Sent to ${financeEmail}${financeCcEmails.length ? `; cc ${financeCcEmails.join(', ')}` : ''} with committee decision: ${request.decision}`);
     return delivery;
   }
 

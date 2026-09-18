@@ -15,6 +15,13 @@ const boolFromString = (defaultValue = false) => z.preprocess((value) => {
 const optionalString = () => z.preprocess(emptyToUndefined, z.string().min(1).optional());
 const optionalUrl = () => z.preprocess(emptyToUndefined, z.string().url().optional());
 
+function parseEmailList(value) {
+  return String(value || '')
+    .split(',')
+    .map((email) => email.trim())
+    .filter(Boolean);
+}
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -35,6 +42,7 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.preprocess(emptyToUndefined, z.string().email().default('admin@cci.local')),
   FINANCE_TEAM_NAME: z.preprocess(emptyToUndefined, z.string().default('CCI USA Finance Team')),
   FINANCE_TEAM_EMAIL: z.preprocess(emptyToUndefined, z.string().email().default('finance@cci.local')),
+  FINANCE_TEAM_CC_EMAIL: optionalString(),
   CLOUDINARY_CLOUD_NAME: optionalString(),
   CLOUDINARY_API_KEY: optionalString(),
   CLOUDINARY_API_SECRET: optionalString(),
@@ -55,6 +63,16 @@ const envSchema = z.object({
 }).superRefine((env, ctx) => {
   const hasSmtp = !!env.SMTP_HOST || !!env.SENDGRID_API_KEY;
   const hasResend = !!env.RESEND_API_KEY;
+  for (const email of parseEmailList(env.FINANCE_TEAM_CC_EMAIL)) {
+    const parsed = z.string().email().safeParse(email);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['FINANCE_TEAM_CC_EMAIL'],
+        message: `Invalid finance CC email: ${email}`
+      });
+    }
+  }
 
   if (env.NODE_ENV === 'production') {
     if (!env.APP_BASE_URL) {
@@ -147,6 +165,7 @@ function buildJobsConfig(env) {
     adminEmail: env.ADMIN_EMAIL,
     financeTeamName: env.FINANCE_TEAM_NAME,
     financeTeamEmail: env.FINANCE_TEAM_EMAIL,
+    financeTeamCcEmails: parseEmailList(env.FINANCE_TEAM_CC_EMAIL),
     qstash: {
       token: env.QSTASH_TOKEN,
       currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
