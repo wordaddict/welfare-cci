@@ -43,6 +43,10 @@ const envSchema = z.object({
   FINANCE_TEAM_NAME: z.preprocess(emptyToUndefined, z.string().default('CCI USA Finance Team')),
   FINANCE_TEAM_EMAIL: z.preprocess(emptyToUndefined, z.string().email().default('finance@cci.local')),
   FINANCE_TEAM_CC_EMAIL: optionalString(),
+  FINANCE_EXPENSE_API_URL: optionalUrl(),
+  FINANCE_EXPENSE_API_SECRET: optionalString(),
+  FINANCE_EXPENSE_DEFAULT_TEAM: z.preprocess(emptyToUndefined, z.string().default('ADMINISTRATION')),
+  FINANCE_EXPENSE_DEFAULT_CAMPUS: z.preprocess(emptyToUndefined, z.string().default('DMV')),
   CLOUDINARY_CLOUD_NAME: optionalString(),
   CLOUDINARY_API_KEY: optionalString(),
   CLOUDINARY_API_SECRET: optionalString(),
@@ -177,6 +181,16 @@ function buildJobsConfig(env) {
   };
 }
 
+function buildFinanceExpenseConfig(env) {
+  return {
+    apiUrl: env.FINANCE_EXPENSE_API_URL ? env.FINANCE_EXPENSE_API_URL.replace(/\/$/, '') : undefined,
+    apiSecret: env.FINANCE_EXPENSE_API_SECRET,
+    defaultTeam: env.FINANCE_EXPENSE_DEFAULT_TEAM,
+    defaultCampus: env.FINANCE_EXPENSE_DEFAULT_CAMPUS,
+    enabled: !!(env.FINANCE_EXPENSE_API_URL && env.FINANCE_EXPENSE_API_SECRET)
+  };
+}
+
 function getAppConfig() {
   if (cachedConfig) return cachedConfig;
   let env;
@@ -197,9 +211,10 @@ function getAppConfig() {
     sessionSecret: env.SESSION_SECRET || 'dev-secret-change-me',
     email: buildEmailConfig(env),
     storage: buildStorageConfig(env),
-    jobs: buildJobsConfig(env)
+    jobs: buildJobsConfig(env),
+    financeExpense: buildFinanceExpenseConfig(env)
   };
   return cachedConfig;
 }
 
-module.exports = { getAppConfig };
+module.exports = { getAppConfig, buildFinanceExpenseConfig };

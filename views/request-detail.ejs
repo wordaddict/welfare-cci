@@ -457,6 +457,25 @@
   <% if (flash.financePacket === 'missing-decision') { %>
     <div class="alert"><b>Record the final committee decision before sending the finance packet.</b></div>
   <% } %>
+  <% if (flash.testFinance) { %>
+    <div class="note">
+      <b>Test finance handoff triggered.</b>
+      The request was recorded as a Full Approval using the requested amount, then the finance packet handoff ran.
+      <% if (flash.financeExpense === 'submitted') { %>
+        Finance API status: submitted successfully.
+      <% } else if (flash.financeExpense === 'duplicate') { %>
+        Finance API status: duplicate already exists.
+      <% } else if (flash.financeExpense === 'failed') { %>
+        Finance API status: failed. Check the request activity log and server console for details.
+      <% } else if (flash.financeExpense === 'skipped-missing-config') { %>
+        Finance API status: skipped because `FINANCE_EXPENSE_API_URL` or `FINANCE_EXPENSE_API_SECRET` is missing.
+      <% } else if (flash.financeExpense === 'skipped-not-approved') { %>
+        Finance API status: skipped because the decision was not approved.
+      <% } else { %>
+        Finance API status: <%= flash.financeExpense || 'unknown' %>.
+      <% } %>
+    </div>
+  <% } %>
   <% if (financePacketState === 'failed' && financeNotification && financeNotification.error) { %>
     <div class="alert"><b>Last finance email error:</b> <%= financeNotification.error %></div>
   <% } %>
@@ -480,6 +499,11 @@
       <p class="fine-print">Use this if Finance did not receive the email or after fixing your Resend or SMTP configuration.</p>
     </form>
   <% } %>
+
+  <form method="post" action="/requests/<%= request.id %>/test-finance-expense" class="stacked-form" onsubmit="return confirm('This will record a Full Approval using the requested amount and trigger the finance handoff for this request. Continue?');">
+    <button class="btn btn-soft">Test Finance API Handoff</button>
+    <p class="fine-print">For testing only: records Full Approval, marks documents complete, builds the finance packet ZIP, submits the finance API request when configured, and keeps the existing finance email fallback.</p>
+  </form>
 
   <% if (request.payment_confirmation_notes) { %>
     <div class="leader-text-block"><span>Finance notes</span><p><%= request.payment_confirmation_notes %></p></div>

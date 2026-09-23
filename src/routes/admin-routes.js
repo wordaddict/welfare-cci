@@ -23,6 +23,16 @@ function financePacketRedirectState(delivery) {
   return 'sent';
 }
 
+function financeExpenseRedirectState(delivery) {
+  const result = delivery && delivery.financeExpense;
+  if (!result) return 'unknown';
+  if (result.submitted) return 'submitted';
+  if (result.duplicate) return 'duplicate';
+  if (result.skipped) return `skipped-${result.reason || 'unknown'}`;
+  if (!result.success) return 'failed';
+  return 'ok';
+}
+
 function financePacketStateForView(request, financeNotification) {
   if (request.finance_packet_sent_at) return 'sent';
   if (!financeNotification) return request.decision ? 'pending' : 'not-started';
@@ -377,7 +387,9 @@ function mountAdminRoutes(app, {
       flash: {
         decisionRecorded: req.query.decisionRecorded === '1',
         financePacket: req.query.financePacket || '',
-        applicantOutcome: req.query.applicantOutcome || ''
+        applicantOutcome: req.query.applicantOutcome || '',
+        testFinance: req.query.testFinance === '1',
+        financeExpense: req.query.financeExpense || ''
       },
       reviewSummary: reviewScoreSummary(reviews),
       categoryDetails: JSON.parse(request.category_details || '{}')
@@ -587,6 +599,26 @@ CCI America Financial Assistance Committee`
 
     const financePacketQuery = financePacketRedirectState(financePacketDelivery);
     res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=${financePacketQuery}&applicantOutcome=${applicantOutcomeQuery}`);
+  });
+
+  app.post('/requests/:id/test-finance-expense', requireRole('admin'), async (req, res) => {
+    const db = await getDb();
+    const request = await db.get('SELECT * FROM requests WHERE id=?', req.params.id);
+    if (!request) return res.status(404).render('error', { title: 'Not found', message: 'Request not found.' });
+
+    const amountApproved = request.amount_approved || request.amount_requested;
+    const notes = request.decision_notes || 'Test approval recorded to trigger the finance expense API integration.';
+    await db.run(
+      `UPDATE requests
+       SET decision=?, amount_approved=?, decision_notes=?, pastorate_required=?, pastorate_decision=?, documents_complete=?, status=?, updated_at=CURRENT_TIMESTAMP
+       WHERE id=?`,
+      ['Full Approval', amountApproved, notes, 'No', request.pastorate_decision || '', 'Yes', 'Decision Made', request.id]
+    );
+    await logActivity(request.id, req.session.user.id, 'Test finance API approval recorded', `Full Approval for ${money(amountApproved)}; finance handoff triggered.`);
+
+    const delivery = await emailFinanceDecisionPacket(db, req, request.id);
+    const financeExpenseState = financeExpenseRedirectState(delivery);
+    return res.redirect(`/requests/${request.id}?decisionRecorded=1&financePacket=${financePacketRedirectState(delivery)}&financeExpense=${encodeURIComponent(financeExpenseState)}&testFinance=1`);
   });
 
   app.post('/requests/:id/send-finance-packet', requireRole('admin'), async (req, res) => {

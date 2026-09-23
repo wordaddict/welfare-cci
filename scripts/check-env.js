@@ -28,6 +28,13 @@ try {
       hasInternalJobSecret: !!config.jobs.internalJobSecret,
       hasQstashToken: !!config.jobs.qstash.token,
       hasQstashSigningKeys: !!(config.jobs.qstash.currentSigningKey && config.jobs.qstash.nextSigningKey)
+    },
+    financeExpense: {
+      enabled: config.financeExpense.enabled,
+      apiUrl: config.financeExpense.apiUrl || null,
+      hasApiSecret: !!config.financeExpense.apiSecret,
+      defaultTeam: config.financeExpense.defaultTeam,
+      defaultCampus: config.financeExpense.defaultCampus
     }
   };
 

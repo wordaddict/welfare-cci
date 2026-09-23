@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 const { getAppConfig } = require('./config');
+const { submitFinanceExpense } = require('./finance-expense-integration');
 const { money } = require('./helpers');
 const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment');
 
@@ -258,11 +259,18 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
       request.finance_confirm_token = token;
     }
     const packetBuffer = await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
+    const financeExpenseDelivery = await submitFinanceExpense({
+      request,
+      packetBuffer,
+      financeConfig: appConfig.financeExpense,
+      logActivity,
+      userId: req.session && req.session.user ? req.session.user.id : null
+    });
     const estimatedEncodedSize = estimateBase64Size(packetBuffer.length);
     if (estimatedEncodedSize > MAX_EMAIL_SIZE_BYTES) {
       const reason = `Finance packet is too large to email (${formatBytes(packetBuffer.length)} raw, ~${formatBytes(estimatedEncodedSize)} after Base64 encoding).`;
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${reason}`);
-      return { success: false, provider: 'attachment-check', reason };
+      return { success: false, provider: 'attachment-check', reason, financeExpense: financeExpenseDelivery };
     }
     const amountForAction = approved ? money(request.amount_approved || request.amount_requested) : 'No payment action requested';
     const confirmLink = `${baseUrl(req)}/finance-confirm/${token}`;
@@ -317,16 +325,19 @@ CCI America Financial Assistance Committee`;
     });
     if (!delivery.success) {
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${delivery.reason || 'Email delivery failed'}`);
+      delivery.financeExpense = financeExpenseDelivery;
       return delivery;
     }
 
     if (delivery.preview) {
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet previewed', `Previewed locally for ${financeEmail} with committee decision: ${request.decision}`);
+      delivery.financeExpense = financeExpenseDelivery;
       return delivery;
     }
 
     await db.run('UPDATE requests SET finance_packet_sent_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
     await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet emailed', `Sent to ${financeEmail}${financeCcEmails.length ? `; cc ${financeCcEmails.join(', ')}` : ''} with committee decision: ${request.decision}`);
+    delivery.financeExpense = financeExpenseDelivery;
     return delivery;
   }
 

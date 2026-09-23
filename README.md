@@ -92,6 +92,21 @@ For production, configure either:
 - or `SENDGRID_API_KEY`
 - or `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`
 
+## Finance expense integration
+
+Approved final committee decisions (`Full Approval`, `Partial Approval`, and `Conditional Approval`) can also be submitted directly to the finance app as expenses.
+
+Set these variables in the welfare workflow app:
+
+- `FINANCE_EXPENSE_API_URL`: base URL for the finance app, for example `https://finance.example.com`
+- `FINANCE_EXPENSE_API_SECRET`: shared bearer token for `POST /api/integrations/workflow/expenses`
+- `FINANCE_EXPENSE_DEFAULT_TEAM`: defaults to `ADMINISTRATION`
+- `FINANCE_EXPENSE_DEFAULT_CAMPUS`: defaults to `DMV`; the request community/campus is used when present
+
+The finance app must use the same value as `WORKFLOW_EXPENSE_API_SECRET`. It must also set `WORKFLOW_EXPENSE_REQUESTER_EMAIL` to an active dedicated finance-app service user, such as `Workflow System`, not a real human account.
+
+If `FINANCE_EXPENSE_API_URL` or `FINANCE_EXPENSE_API_SECRET` is missing, the app records a skipped API activity entry and keeps the existing finance packet email as the notification/fallback path.
+
 ## Files
 
 If Cloudinary is configured, uploads are stored there and streamed back through the app’s authorized routes.
