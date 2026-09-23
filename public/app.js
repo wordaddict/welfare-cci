@@ -67,6 +67,14 @@ function updatePastorInformed(){
   if(submit) submit.disabled = mustInform;
 }
 
+function updatePastorName(){
+  const pastorEmail = document.getElementById('pastorEmail');
+  const pastorName = document.getElementById('pastorName');
+  if(!pastorEmail || !pastorName) return;
+  const selectedOption = pastorEmail.options[pastorEmail.selectedIndex];
+  pastorName.value = selectedOption ? selectedOption.dataset.name || '' : '';
+}
+
 function updateConditionalRequireds(){
   const prior = document.querySelector('[name="prior_assistance"]');
   const priorDetails = document.querySelector('[name="prior_assistance_details"]');
@@ -210,6 +218,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const pastorInformed = document.querySelector('[name="pastor_informed"]');
   if(pastorInformed) pastorInformed.addEventListener('change', updatePastorInformed);
 
+  const pastorEmail = document.getElementById('pastorEmail');
+  if(pastorEmail) pastorEmail.addEventListener('change', updatePastorName);
+
   ['totalAmountNeeded','amountRequested','applicantContribution','otherConfirmedSupport'].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.addEventListener('input', updateFinancialGapPreview);
@@ -219,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateConditionalRequireds();
   updateMembershipConditional();
   updateWorkerConditional();
+  updatePastorName();
   updatePastorInformed();
   updateFinancialGapPreview();
   updateEffortActionValidation();

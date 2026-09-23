@@ -93,7 +93,15 @@
 
   <h3>Pastoral Verification</h3>
   <input type="hidden" name="leader_role" value="Pastor">
-  <div class="two"><label>Name of your Pastor *<input name="leader_name" required></label><label>Pastor's email address *<input name="leader_email" type="email" required></label></div>
+  <input type="hidden" name="leader_name" id="pastorName">
+  <label>Select your Pastor / branch *
+    <select name="leader_email" id="pastorEmail" required>
+      <option value="">Select</option>
+      <% (typeof pastors !== 'undefined' ? pastors : []).forEach((pastor) => { %>
+        <option value="<%= pastor.email %>" data-name="<%= pastor.name %>"><%= pastor.branch %> - <%= pastor.email %></option>
+      <% }) %>
+    </select>
+  </label>
   <label>Pastor's phone number <input name="leader_phone"></label>
   <p class="field-help">If you are not a Celeforce worker, the system will send your Pastor a secure verification link after submission. If you are a Celeforce worker, the Unit Head verification will be completed first, followed by pastoral verification.</p>
   <label>Have you informed your Pastor about this application? *

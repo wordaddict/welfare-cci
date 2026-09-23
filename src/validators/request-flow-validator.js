@@ -1,4 +1,5 @@
 const { normalizeMultiValue } = require('../helpers');
+const { getPastorByEmail } = require('../pastors');
 
 const APPLICANT_REQUIRED_FIELDS = [
   'full_name',
@@ -111,6 +112,10 @@ function validateApplicantSubmission({ body, files }) {
       WORKER_REQUIRED_FIELDS,
       'Please complete the Celeforce service and Unit Head details required for leadership verification.'
     );
+  }
+
+  if (!getPastorByEmail(body.leader_email)) {
+    throw new Error('Please select a Pastor from the approved list.');
   }
 
   if (body.pastor_informed !== 'Yes') {
