@@ -30,6 +30,14 @@
   </div>
 </section>
 
+<% if (flash && flash.pastorCorrection === 'sent') { %>
+  <div class="alert success">Pastor details updated and the pastoral verification email was resent.</div>
+<% } else if (flash && flash.pastorCorrection === 'pendingLeadership') { %>
+  <div class="alert">Pastor details updated. This request is still waiting for Unit Head verification, so the Pastor email will send after that step is complete.</div>
+<% } else if (flash && flash.pastorCorrection === 'failed') { %>
+  <div class="alert">Pastor details updated, but the email resend failed. Check the activity log for the delivery error.</div>
+<% } %>
+
 <section class="card panel-card urgency-triage-card">
   <div class="section-title-row">
     <div>
@@ -278,6 +286,20 @@
         <div><span>Email</span><strong class="wrap-text"><%= request.leader_email || 'Not provided' %></strong></div>
         <div><span>Phone</span><strong><%= request.leader_phone || 'Not provided' %></strong></div>
       </div>
+
+      <% if (!verifications.length) { %>
+        <form method="post" action="/requests/<%= request.id %>/pastor-correction" class="stacked-form">
+          <label>Correct Pastor / branch and resend verification
+            <select name="leader_email" required>
+              <option value="">Select</option>
+              <% (pastors || []).forEach((pastor) => { %>
+                <option value="<%= pastor.email %>" <%= String(request.leader_email || '').toLowerCase() === pastor.email ? 'selected' : '' %>><%= pastor.branch %> - <%= pastor.email %></option>
+              <% }) %>
+            </select>
+          </label>
+          <button class="btn btn-soft">Update Pastor and Resend</button>
+        </form>
+      <% } %>
 
       <% if (request.leader_verification_token && !verifications.length && (request.worker_status !== 'Yes' || request.unit_leader_verified === 'Complete')) { %>
         <div class="subtle-note"><b>Local test link:</b> <a href="/pastor-verify/<%= request.leader_verification_token %>" target="_blank">Open pastoral verification form</a></div>

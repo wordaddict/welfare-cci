@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
 const { getAppConfig } = require('../config');
+const { PASTORS, getPastorByEmail } = require('../pastors');
 const { validateReviewSubmission } = require('../validators/review-validator');
 
 const DASHBOARD_STATUS_ORDER = [
@@ -373,15 +374,73 @@ function mountAdminRoutes(app, {
       financeNotification,
       financePacketState: financePacketStateForView(request, financeNotification),
       financeTeamEmail: getAppConfig().jobs.financeTeamEmail,
+      pastors: PASTORS,
       reviewerAutoAssignEnabled: getAppConfig().jobs.autoAssignReviewers,
       flash: {
         decisionRecorded: req.query.decisionRecorded === '1',
         financePacket: req.query.financePacket || '',
-        applicantOutcome: req.query.applicantOutcome || ''
+        applicantOutcome: req.query.applicantOutcome || '',
+        pastorCorrection: req.query.pastorCorrection || ''
       },
       reviewSummary: reviewScoreSummary(reviews),
       categoryDetails: JSON.parse(request.category_details || '{}')
     });
+  });
+
+  app.post('/requests/:id/pastor-correction', requireRole('admin'), async (req, res) => {
+    const db = await getDb();
+    const request = await db.get('SELECT * FROM requests WHERE id=?', req.params.id);
+    if (!request) return res.status(404).render('error', { title: 'Not found', message: 'Request not found.' });
+
+    const selectedPastor = getPastorByEmail(req.body.leader_email);
+    if (!selectedPastor) return res.status(400).render('error', { title: 'Invalid Pastor', message: 'Please choose a Pastor from the approved list.' });
+
+    const existingVerification = await db.get('SELECT id FROM leader_verifications WHERE request_id=? ORDER BY created_at DESC LIMIT 1', req.params.id);
+    if (existingVerification) {
+      return res.status(400).render('error', {
+        title: 'Pastoral verification already submitted',
+        message: 'This request already has a pastoral response. Keep the submitted verification as the audit record.'
+      });
+    }
+
+    await db.run(
+      'UPDATE requests SET leader_name=?, leader_email=?, leader_contact=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+      [selectedPastor.name, selectedPastor.email, [selectedPastor.email, request.leader_phone].filter(Boolean).join(' / '), req.params.id]
+    );
+
+    if (request.worker_status === 'Yes' && request.unit_leader_verified !== 'Complete') {
+      await logActivity(req.params.id, req.session.user.id, 'Pastor corrected', `${selectedPastor.name} <${selectedPastor.email}>; pastoral email will send after leadership verification.`);
+      return res.redirect(`/requests/${req.params.id}?pastorCorrection=pendingLeadership`);
+    }
+
+    const pastorLink = `${baseUrl(req)}/pastor-verify/${request.leader_verification_token}`;
+    const delivery = await sendNotification({
+      db,
+      requestId: req.params.id,
+      recipientName: selectedPastor.name,
+      recipientEmail: selectedPastor.email,
+      subject: `CCI America pastoral verification needed for ${request.full_name}`,
+      body: `Dear ${selectedPastor.name},
+
+${request.full_name} identified you as their Pastor for a confidential financial assistance request submitted to CCI America.
+
+The Pastor email on this request was corrected by an admin. Please use the secure verification page below to review the applicant's relevant submitted information and complete all required pastoral verification questions.
+
+${pastorLink}
+
+This request should be handled confidentially.
+
+CCI America Financial Assistance Committee`
+    });
+
+    if (!delivery.success) {
+      await logActivity(req.params.id, req.session.user.id, 'Pastor corrected; resend failed', `${selectedPastor.email}: ${delivery.reason || 'Email delivery failed'}`);
+      return res.redirect(`/requests/${req.params.id}?pastorCorrection=failed`);
+    }
+
+    await db.run('UPDATE requests SET leader_verification_sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?', req.params.id);
+    await logActivity(req.params.id, req.session.user.id, 'Pastor corrected and verification resent', `${selectedPastor.name} <${selectedPastor.email}>`);
+    res.redirect(`/requests/${req.params.id}?pastorCorrection=sent`);
   });
 
   app.post('/requests/:id/status', requireRole('admin'), async (req, res) => {
