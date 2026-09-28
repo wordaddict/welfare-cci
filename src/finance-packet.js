@@ -9,12 +9,6 @@ const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment
 
 const MAX_EMAIL_SIZE_BYTES = 40 * 1024 * 1024;
 
-function briefText(value, limit = 120) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (!text) return 'Not provided';
-  return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1)).trim()}…` : text;
-}
-
 function estimateBase64Size(byteLength) {
   return Math.ceil(Number(byteLength || 0) / 3) * 4;
 }
@@ -37,7 +31,11 @@ function scoreInterpretation(summary) {
 
 function drawFinanceSummaryPdf({ doc, request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {
   const pageW = doc.page.width;
-  const margin = 36;
+  const pageH = doc.page.height;
+  const margin = 44;
+  const contentW = pageW - margin * 2;
+  const contentTop = 88;
+  const contentBottom = pageH - 58;
   const red = '#e30613';
   const dark = '#0b1020';
   const muted = '#5f6b7d';
@@ -52,144 +50,331 @@ function drawFinanceSummaryPdf({ doc, request, docs = [], verifications, assigne
   const supportLetter = primaryLeader && primaryLeader.support_letter_file ? 'Yes' : 'No / not uploaded';
   const applicantEvidence = (docs || []).map(d => d.original_name).filter(Boolean);
   const leaderEvidence = primaryLeader && primaryLeader.support_letter_file ? ['Pastoral support letter uploaded'] : [];
-  const evidenceSummary = [...applicantEvidence, ...leaderEvidence].length
-    ? [...applicantEvidence, ...leaderEvidence].join('; ')
-    : 'No evidence uploaded';
+  const evidenceFiles = [...applicantEvidence, ...leaderEvidence];
+  let cursorY = contentTop;
 
-  function label(text, x, y, opts = {}) {
-    doc.font('Helvetica-Bold').fontSize(opts.size || 6.8).fillColor(opts.color || muted).text(String(text || '').toUpperCase(), x, y, opts.text || { characterSpacing: 1.2 });
+  function inlineText(value, fallback = 'Not provided') {
+    const text = String(value == null ? '' : value)
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/\u2026/g, '...')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text || fallback;
   }
 
-  function value(text, x, y, opts = {}) {
-    doc.font(opts.bold === false ? 'Helvetica' : 'Helvetica-Bold').fontSize(opts.size || 9).fillColor(opts.color || dark).text(String(text || 'Not provided'), x, y, opts.text || {});
+  function narrativeText(value, fallback = 'Not provided') {
+    const text = String(value == null ? '' : value)
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/\u2026/g, '...')
+      .split('\n')
+      .map(part => part.replace(/[ \t]+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n\n');
+    return text || fallback;
   }
 
-  function pill(text, x, y, w, fill, stroke, color) {
-    doc.roundedRect(x, y, w, 20, 10).fillAndStroke(fill, stroke);
-    doc.font('Helvetica-Bold').fontSize(7.4).fillColor(color).text(text, x, y + 6, { width: w, align: 'center' });
+  function formatDate(value) {
+    const raw = inlineText(value, 'Not provided');
+    if (raw === 'Not provided') return raw;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC'
+    }).format(parsed);
   }
 
-  function panel(x, y, w, h, title) {
-    doc.roundedRect(x, y, w, h, 9).strokeColor(line).lineWidth(0.7).stroke();
-    if (title) doc.font('Helvetica-Bold').fontSize(9.2).fillColor(dark).text(title, x + 10, y + 9, { width: w - 20 });
+  function label(text, x, y, width, opts = {}) {
+    doc.font('Helvetica-Bold')
+      .fontSize(opts.size || 6.8)
+      .fillColor(opts.color || muted)
+      .text(inlineText(text, '').toUpperCase(), x, y, {
+        width,
+        characterSpacing: opts.characterSpacing == null ? 1.05 : opts.characterSpacing,
+        align: opts.align || 'left',
+        lineBreak: false
+      });
   }
 
-  function smallBox(x, y, w, h, lab, val) {
-    doc.roundedRect(x, y, w, h, 6).fill(soft);
-    label(lab, x + 8, y + 7);
-    value(briefText(val, 42), x + 8, y + 19, { size: 8, text: { width: w - 16 } });
+  function drawHeader() {
+    if (fs.existsSync(cciLogo)) doc.image(cciLogo, margin, 25, { width: 48 });
+    label('CCI America', margin + 62, 24, 190, { size: 7.1 });
+    doc.font('Helvetica-Bold').fontSize(12.5).fillColor(dark)
+      .text('Committee Approval Summary', margin + 62, 38, { width: 260, lineBreak: false });
+    label('Case ID', pageW - margin - 174, 22, 174, { align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(dark)
+      .text(inlineText(request.case_id), pageW - margin - 210, 36, { width: 210, align: 'right', lineBreak: false });
+    doc.moveTo(margin, 67).lineTo(pageW - margin, 67).strokeColor(line).lineWidth(0.8).stroke();
   }
 
-  if (fs.existsSync(cciLogo)) doc.image(cciLogo, margin, 22, { width: 24 });
-  label('CCI America', margin + 42, 21, { size: 7 });
-  value('Committee Approval Summary', margin + 42, 34, { size: 12 });
-  label('Case ID', pageW - 185, 20, { text: { width: 150, align: 'right' } });
-  value(request.case_id, pageW - 185, 34, { size: 12, text: { width: 150, align: 'right' } });
-  doc.font('Helvetica-Bold').fontSize(7.2).fillColor(muted).text(`Generated ${new Date().toLocaleDateString()}`, pageW - 185, 51, { width: 150, align: 'right' });
-  doc.moveTo(margin, 72).lineTo(pageW - margin, 72).strokeColor(line).lineWidth(0.8).stroke();
+  function newPage() {
+    doc.addPage();
+    drawHeader();
+    cursorY = contentTop;
+  }
 
-  doc.circle(margin + 3, 96, 4).fill(red);
-  label('Confidential approval memo', margin + 13, 91, { color: '#b00010', size: 7.6 });
-  value(briefText(request.full_name, 30), margin, 111, { size: 26 });
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text(`${request.request_category} · Requested ${money(request.amount_requested)} · Total need ${money(request.total_amount_needed || request.amount_requested)}`, margin, 142, { width: 390 });
-  pill(request.urgency || 'Standard', pageW - 160, 91, 70, request.urgency === 'Emergency' ? '#fff0f1' : '#f3f4f6', '#ffb6bd', '#b00010');
-  pill(request.status || 'New Request', pageW - 82, 91, 58, '#f4f5f7', '#d8dde6', dark);
+  function ensureSpace(height) {
+    if (cursorY + height > contentBottom) newPage();
+  }
 
-  const barY = 166;
-  doc.roundedRect(margin, barY, pageW - margin * 2, 46, 9).fill(maroon);
-  const colW = (pageW - margin * 2) / 4;
-  const items = [
+  function heightOf(text, width, font = 'Helvetica', size = 9, lineGap = 2) {
+    doc.font(font).fontSize(size);
+    return doc.heightOfString(text, { width, lineGap });
+  }
+
+  function drawSectionTitle(title, subtitle = '', minContentHeight = 78) {
+    const cleanTitle = inlineText(title);
+    const cleanSubtitle = subtitle ? inlineText(subtitle, '') : '';
+    const titleH = heightOf(cleanTitle, contentW, 'Helvetica-Bold', 13, 0);
+    const subtitleH = cleanSubtitle ? heightOf(cleanSubtitle, contentW, 'Helvetica', 8, 1) + 4 : 0;
+    // Keep a section heading with at least one useful row/card of its content.
+    ensureSpace(titleH + subtitleH + minContentHeight);
+    doc.rect(margin, cursorY + 2, 4, titleH + subtitleH + 2).fill(red);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(dark)
+      .text(cleanTitle, margin + 13, cursorY, { width: contentW - 13 });
+    cursorY += titleH + 3;
+    if (cleanSubtitle) {
+      doc.font('Helvetica').fontSize(8).fillColor(muted)
+        .text(cleanSubtitle, margin + 13, cursorY, { width: contentW - 13, lineGap: 1 });
+      cursorY += subtitleH;
+    }
+    cursorY += 8;
+  }
+
+  function drawFactGrid(items, options = {}) {
+    const filtered = items.filter(item => item && item[0]);
+    const columns = options.columns || 2;
+    const gap = 10;
+    const colW = (contentW - gap * (columns - 1)) / columns;
+    const valueSize = options.valueSize || 9.2;
+
+    for (let index = 0; index < filtered.length; index += columns) {
+      const row = filtered.slice(index, index + columns);
+      const heights = row.map(([, value]) => {
+        const body = inlineText(value);
+        return Math.max(options.minHeight || 49, 12 + 8 + 6 + heightOf(body, colW - 24, 'Helvetica-Bold', valueSize, 1.5) + 11);
+      });
+      const rowH = Math.max(...heights);
+      ensureSpace(rowH + 9);
+
+      row.forEach(([fieldLabel, value], colIndex) => {
+        const x = margin + colIndex * (colW + gap);
+        doc.roundedRect(x, cursorY, colW, rowH, 7)
+          .fillAndStroke(options.fill || soft, options.stroke || line);
+        label(fieldLabel, x + 12, cursorY + 11, colW - 24, {
+          size: 6.4,
+          color: options.labelColor || muted
+        });
+        doc.font('Helvetica-Bold').fontSize(valueSize).fillColor(options.valueColor || dark)
+          .text(inlineText(value), x + 12, cursorY + 26, { width: colW - 24, lineGap: 1.5 });
+      });
+      cursorY += rowH + 9;
+    }
+  }
+
+  function fittingPrefix(text, width, maxHeight, font, size, lineGap) {
+    const words = text.split(/\s+/).filter(Boolean);
+    let low = 1;
+    let high = words.length;
+    let best = 0;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = words.slice(0, mid).join(' ');
+      if (heightOf(candidate, width, font, size, lineGap) <= maxHeight) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    if (!best) best = 1;
+    return {
+      part: words.slice(0, best).join(' '),
+      rest: words.slice(best).join(' ')
+    };
+  }
+
+  function drawNarrativeCard(cardLabel, value, options = {}) {
+    const bodySize = options.bodySize || 9.2;
+    const bodyFont = options.bold ? 'Helvetica-Bold' : 'Helvetica';
+    const bodyColor = options.bodyColor || dark;
+    const lineGap = options.lineGap == null ? 2.2 : options.lineGap;
+    const textW = contentW - 28;
+    const chromeH = 43;
+    let remaining = narrativeText(value);
+    let continuation = false;
+
+    while (remaining) {
+      if (contentBottom - cursorY < 92) newPage();
+      const available = contentBottom - cursorY;
+      const fullBodyH = heightOf(remaining, textW, bodyFont, bodySize, lineGap);
+      let part = remaining;
+      let rest = '';
+      if (fullBodyH + chromeH > available) {
+        const split = fittingPrefix(remaining, textW, Math.max(18, available - chromeH), bodyFont, bodySize, lineGap);
+        part = split.part;
+        rest = split.rest;
+      }
+      const bodyH = heightOf(part, textW, bodyFont, bodySize, lineGap);
+      const cardH = chromeH + bodyH;
+      doc.roundedRect(margin, cursorY, contentW, cardH, 8)
+        .fillAndStroke(options.fill || '#ffffff', options.stroke || line);
+      if (options.accent) doc.rect(margin, cursorY, 4, cardH).fill(options.accent);
+      label(`${cardLabel}${continuation ? ' - continued' : ''}`, margin + 14, cursorY + 12, textW, {
+        size: 6.5,
+        color: options.labelColor || muted
+      });
+      doc.font(bodyFont).fontSize(bodySize).fillColor(bodyColor)
+        .text(part, margin + 14, cursorY + 29, { width: textW, lineGap });
+      cursorY += cardH + 9;
+      remaining = rest;
+      continuation = true;
+      if (remaining) newPage();
+    }
+  }
+
+  drawHeader();
+
+  doc.circle(margin + 4, cursorY + 6, 4).fill(red);
+  label('Confidential approval memo', margin + 16, cursorY + 1, 260, { color: '#b00010', size: 7.2 });
+  cursorY += 23;
+
+  const name = inlineText(request.full_name);
+  const categoryLine = `${inlineText(request.request_category)} - Requested ${money(request.amount_requested)} - Total need ${money(request.total_amount_needed || request.amount_requested)}`;
+  const nameW = 330;
+  const sideW = 164;
+  const nameH = heightOf(name, nameW, 'Helvetica-Bold', 22, 0);
+  const categoryH = heightOf(categoryLine, nameW, 'Helvetica-Bold', 8.5, 1);
+  const sideText = `Urgency: ${inlineText(request.urgency || 'Standard')}\nStatus: ${inlineText(request.status || 'New Request')}`;
+  const sideH = heightOf(sideText, sideW, 'Helvetica-Bold', 8.5, 4);
+  const heroH = Math.max(nameH + categoryH + 9, sideH);
+  ensureSpace(heroH + 12);
+  doc.font('Helvetica-Bold').fontSize(22).fillColor(dark).text(name, margin, cursorY, { width: nameW, lineGap: 0 });
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(muted).text(categoryLine, margin, cursorY + nameH + 5, { width: nameW, lineGap: 1 });
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(dark).text(sideText, pageW - margin - sideW, cursorY + 2, { width: sideW, align: 'right', lineGap: 4 });
+  cursorY += heroH + 13;
+
+  drawSectionTitle('Decision at a glance');
+  drawFactGrid([
     ['Committee decision', request.decision || 'Pending'],
     ['Approved amount', approvedAmount],
-    ['Payment route', request.direct_payment_possible || 'Not provided'],
-    ['Due date', request.due_date || 'Not provided']
-  ];
-  items.forEach(([lab, val], index) => {
-    const x = margin + index * colW;
-    if (index) doc.moveTo(x, barY).lineTo(x, barY + 46).strokeColor('#58344b').lineWidth(0.5).stroke();
-    label(lab, x + 9, barY + 10, { color: '#ffd2d7', size: 6.2 });
-    value(briefText(val, 25), x + 9, barY + 25, { color: 'white', size: 10 });
-  });
+    ['Amount requested', money(request.amount_requested)],
+    ['Due date', formatDate(request.due_date)],
+    ['Payment route available', request.direct_payment_possible || 'Not provided'],
+    ['Committee review score', `${scoreText} - ${interp}`]
+  ], { fill: maroon, stroke: maroon, labelColor: '#ffd2d7', valueColor: '#ffffff' });
 
-  panel(margin, 224, pageW - margin * 2, 54, 'Payment / implementation instruction');
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(dark).text('Payment details:', margin + 10, 244, { continued: true });
-  doc.font('Helvetica').fillColor(dark).text(` ${briefText(request.direct_payment_possible === 'Yes' ? request.payment_details : `${request.direct_payment_explanation || ''} Zelle: ${request.zelle_name || 'N/A'} / ${request.zelle_email || 'N/A'} / ${request.zelle_phone || 'N/A'}`, 120)}`);
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(dark).text('Decision notes:', margin + 10, 259, { continued: true });
-  doc.font('Helvetica').fillColor(dark).text(` ${briefText(request.decision_notes, 100)}`);
+  drawSectionTitle('Payment and implementation', 'Complete payment instructions and the committee decision record.');
+  if (inlineText(request.payment_details, '')) {
+    drawNarrativeCard('Payment details', request.payment_details, { accent: red });
+  }
+  if (inlineText(request.direct_payment_explanation, '')) {
+    drawNarrativeCard('Direct payment explanation', request.direct_payment_explanation, { accent: red });
+  }
+  if (!inlineText(request.payment_details, '') && !inlineText(request.direct_payment_explanation, '')) {
+    drawNarrativeCard('Payment details', 'No payment details provided.', { accent: red });
+  }
+  if (request.zelle_name || request.zelle_email || request.zelle_phone) {
+    drawFactGrid([
+      ['Zelle name', request.zelle_name || 'Not provided'],
+      ['Zelle email', request.zelle_email || 'Not provided'],
+      ['Zelle phone', request.zelle_phone || 'Not provided']
+    ]);
+  }
+  drawNarrativeCard('Committee decision notes', request.decision_notes || 'No decision notes provided.', { accent: maroon });
 
-  const gap = 10;
-  const half = (pageW - margin * 2 - gap) / 2;
-  let y = 290;
-  panel(margin, y, half, 88, 'Applicant snapshot');
-  smallBox(margin + 10, y + 28, (half - 30) / 2, 25, 'Email', request.email);
-  smallBox(margin + 20 + (half - 30) / 2, y + 28, (half - 30) / 2, 25, 'Phone', request.phone);
-  smallBox(margin + 10, y + 58, (half - 30) / 2, 25, 'Community', request.cci_community_name);
-  smallBox(margin + 20 + (half - 30) / 2, y + 58, (half - 30) / 2, 25, 'CCI connection', `${request.connection_duration} · Membership: ${request.membership_status === 'Yes' ? 'Official member' : 'Not yet official'} · Celeforce: ${request.worker_status === 'Yes' ? 'Worker' : 'No'}`);
+  drawSectionTitle('Applicant snapshot');
+  drawFactGrid([
+    ['Email', request.email],
+    ['Phone', request.phone],
+    ['CCI community', request.cci_community_name],
+    ['Connection duration', request.connection_duration],
+    ['Membership', request.membership_status === 'Yes' ? 'Official member' : 'Not yet official'],
+    ['Celeforce', request.worker_status === 'Yes' ? 'Worker' : 'No']
+  ]);
 
-  panel(margin + half + gap, y, half, 88, 'Need and risk');
-  doc.font('Helvetica-Bold').fontSize(7.8).fillColor(dark).text('Situation:', margin + half + gap + 10, y + 28, { continued: true });
-  doc.font('Helvetica').text(` ${briefText(request.situation, 65)}`);
-  doc.font('Helvetica-Bold').fontSize(7.8).text('Risk if not supported:', margin + half + gap + 10, y + 45, { continued: true });
-  doc.font('Helvetica').text(` ${briefText(request.consequence, 65)}`);
-  doc.font('Helvetica-Bold').fontSize(7.8).text('Applicant effort:', margin + half + gap + 10, y + 62, { continued: true });
-  doc.font('Helvetica').text(` ${briefText(request.applicant_effort, 65)}`);
+  drawSectionTitle('Need, risk, and applicant effort', 'Narrative answers are reproduced in full for committee and finance review.');
+  drawNarrativeCard('Situation', request.situation);
+  drawNarrativeCard('Risk if support is not provided', request.consequence);
+  drawNarrativeCard('Applicant effort', request.applicant_effort);
+  drawNarrativeCard('Urgency reason', request.urgency_reason);
 
-  y = 390;
-  panel(margin, y, half, 92, 'Pastoral verification');
-  smallBox(margin + 10, y + 28, (half - 30) / 2, 25, 'Pastor', `${request.leader_name} · Pastor`);
-  smallBox(margin + 20 + (half - 30) / 2, y + 28, (half - 30) / 2, 25, 'Membership / Celeforce', primaryLeader ? `${primaryLeader.member_confirmed || 'N/A'} / ${primaryLeader.worker_confirmed || 'N/A'}` : 'Pending');
-  smallBox(margin + 10, y + 58, (half - 30) / 2, 25, 'Support letter', supportLetter);
-  doc.font('Helvetica-Bold').fontSize(7.6).fillColor(dark).text('Pastor comments:', margin + 20 + (half - 30) / 2, y + 59, { continued: true });
-  doc.font('Helvetica').fillColor(dark).text(` ${primaryLeader ? briefText(primaryLeader.decision_comments || primaryLeader.pastoral_context, 28) : 'Pending'}`, { width: (half - 30) / 2 });
-
-  panel(margin + half + gap, y, half, 92, 'Review outcome');
-  doc.roundedRect(margin + half + gap + 10, y + 28, half - 20, 28, 6).fillAndStroke('#fff4f5', '#ffc7ce');
-  doc.rect(margin + half + gap + 10, y + 28, 3, 28).fill(red);
-  value(scoreText, margin + half + gap + 20, y + 35, { size: 12 });
-  value(interp, margin + half + gap + half - 100, y + 37, { size: 8, color: '#b00010', text: { width: 78, align: 'right' } });
-  doc.font('Helvetica-Bold').fontSize(7.8).fillColor(dark).text('Urgency reason:', margin + half + gap + 10, y + 63, { continued: true });
-  doc.font('Helvetica').fillColor(dark).text(` ${briefText(request.urgency_reason, 50)}`);
-  doc.font('Helvetica-Bold').fontSize(7.8).text('Reviews received:', margin + half + gap + 10, y + 78, { continued: true });
-  doc.font('Helvetica').text(` ${reviews.length} of ${assignedReviewers.length} assigned`);
-
-  y = 494;
-  panel(margin, y, pageW - margin * 2, 107, 'Reviewer recommendation summary');
-  const tx = margin + 10;
-  const ty = y + 34;
-  const widths = [130, 60, 112, 74, 160];
-  const heads = ['Reviewer', 'Score', 'Recommendation', 'Amount', 'Key note'];
-  let x = tx;
-  heads.forEach((heading, index) => {
-    label(heading, x, ty, { size: 6.2 });
-    x += widths[index];
-  });
-  doc.moveTo(tx, ty + 14).lineTo(pageW - margin - 10, ty + 14).strokeColor(line).lineWidth(0.7).stroke();
-  const rows = reviews.slice(0, 4);
-  if (!rows.length) {
-    value('No reviewer assessments submitted yet.', tx, ty + 26, { bold: false, size: 8.2 });
+  drawSectionTitle('Pastoral verification');
+  drawFactGrid([
+    ['Pastor / leader', request.leader_name || (primaryLeader && primaryLeader.verifier_name) || 'Not provided'],
+    ['Membership confirmed', primaryLeader ? primaryLeader.member_confirmed : 'Pending'],
+    ['Celeforce confirmed', primaryLeader ? primaryLeader.worker_confirmed : 'Pending'],
+    ['Support letter', supportLetter]
+  ]);
+  if (primaryLeader) {
+    drawNarrativeCard('Pastoral context', primaryLeader.pastoral_context || 'No pastoral context provided.');
+    if (primaryLeader.decision_comments && primaryLeader.decision_comments !== primaryLeader.pastoral_context) {
+      drawNarrativeCard('Pastor comments', primaryLeader.decision_comments);
+    }
   } else {
-    rows.forEach((review, index) => {
-      const yy = ty + 25 + index * 18;
-      x = tx;
-      const vals = [review.reviewer_name, `${review.score_total || 0}/21`, review.recommended_decision, money(review.recommended_amount), briefText(review.notes, 28)];
-      vals.forEach((val, innerIndex) => {
-        value(val, x, yy, { size: 7.7, text: { width: widths[innerIndex] - 6 } });
-        x += widths[innerIndex];
+    drawNarrativeCard('Pastoral comments', 'Pastoral verification is pending.');
+  }
+
+  drawSectionTitle('Review outcome', `${reviews.length} of ${assignedReviewers.length} assigned reviewer assessments received.`);
+  drawFactGrid([
+    ['Average score', scoreText],
+    ['Interpretation', interp],
+    ['Reviews received', `${reviews.length} of ${assignedReviewers.length}`],
+    ['Final committee decision', request.decision || 'Pending']
+  ], { fill: '#fff4f5', stroke: '#ffc7ce', valueColor: '#8f0010' });
+
+  if (!reviews.length) {
+    drawNarrativeCard('Reviewer assessments', 'No reviewer assessments have been submitted yet.');
+  } else {
+    reviews.forEach((review, index) => {
+      drawSectionTitle(`Reviewer ${index + 1}: ${inlineText(review.reviewer_name)}`, '', 184);
+      drawFactGrid([
+        ['Score', `${review.score_total || 0}/21`],
+        ['Recommendation', review.recommended_decision || 'Not provided'],
+        ['Recommended amount', review.recommended_amount ? money(review.recommended_amount) : 'Not provided'],
+        ['System assessment agreement', review.system_assessment_agreement || 'Not provided'],
+        ['Conflict of interest', review.conflict_of_interest || 'Not provided'],
+        ['Submitted', formatDate(review.created_at)]
+      ]);
+      drawNarrativeCard('Reviewer note', review.notes || 'No reviewer note provided.', {
+        fill: '#fff9fa',
+        stroke: '#ffc7ce',
+        accent: red,
+        bodySize: 9.6
       });
-      if (index < rows.length - 1) doc.moveTo(tx, yy + 13).lineTo(pageW - margin - 10, yy + 13).strokeColor('#f0f1f5').lineWidth(0.5).stroke();
+      if (inlineText(review.override_reason, '')) {
+        drawNarrativeCard('Override reason', review.override_reason, { accent: maroon });
+      }
     });
   }
 
-  panel(margin, 612, pageW - margin * 2, 36, 'Evidence included with finance packet');
-  doc.font('Helvetica').fontSize(7.2).fillColor(dark).text(briefText(evidenceSummary, 185), margin + 10, 632, { width: pageW - margin * 2 - 20 });
+  drawSectionTitle('Evidence included with finance packet');
+  drawNarrativeCard('Included files', evidenceFiles.length
+    ? evidenceFiles.map((fileName, index) => `${index + 1}. ${inlineText(fileName)}`).join('\n')
+    : 'No evidence uploaded.');
 
-  doc.moveTo(margin, 665).lineTo(pageW - margin, 665).strokeColor(line).lineWidth(0.7).stroke();
-  doc.font('Helvetica-Bold').fontSize(6.8).fillColor(muted).text('Confidential: For CCI USA Finance Team and authorized committee use only. · © 2026 CCI America.', margin, 676, { width: 390 });
+  const generatedDate = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date());
+  const pageRange = doc.bufferedPageRange();
+  for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex += 1) {
+    doc.switchToPage(pageIndex);
+    doc.moveTo(margin, pageH - 42).lineTo(pageW - margin, pageH - 42).strokeColor(line).lineWidth(0.7).stroke();
+    doc.font('Helvetica-Bold').fontSize(6.7).fillColor(muted)
+      .text('Confidential - For CCI USA Finance Team and authorized committee use only.', margin, pageH - 32, { width: 360, lineBreak: false });
+    doc.font('Helvetica').fontSize(6.7).fillColor(muted)
+      .text(`Generated ${generatedDate}  |  Page ${pageIndex - pageRange.start + 1} of ${pageRange.count}`, pageW - margin - 190, pageH - 32, { width: 190, align: 'right', lineBreak: false });
+  }
 }
 
 function buildFinanceSummaryPdfBuffer({ request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: false });
+    const doc = new PDFDocument({ size: 'LETTER', margin: 0, bufferPages: true, autoFirstPage: true });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
