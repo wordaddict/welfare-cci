@@ -33,6 +33,26 @@ function mountPublicRoutes(app, {
   const adminNotificationEmail = appConfig.jobs.adminEmail;
   const financeTeamName = appConfig.jobs.financeTeamName;
 
+  async function notifyAdminOfMilestone({ db, requestId, subject, body, activity }) {
+    const delivery = await sendNotification({
+      db,
+      requestId,
+      recipientName: 'CCI Welfare Admin',
+      recipientEmail: adminNotificationEmail,
+      subject,
+      body
+    });
+
+    await logActivity(
+      requestId,
+      null,
+      delivery.success ? activity : `${activity} failed`,
+      delivery.success ? adminNotificationEmail : (delivery.reason || 'Email delivery failed')
+    );
+
+    return delivery;
+  }
+
   async function renderLeadershipVerification(req, res) {
     const db = await getDb();
     const request = await db.get('SELECT * FROM requests WHERE unit_leader_verification_token=?', req.params.token);
@@ -74,6 +94,14 @@ function mountPublicRoutes(app, {
 
     await db.run('UPDATE requests SET unit_leader_verified=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', ['Complete', 'Awaiting Pastoral Verification', request.id]);
     await logActivity(request.id, null, 'Leadership verification submitted', `${req.body.verifier_name} submitted Unit Head verification`);
+
+    await notifyAdminOfMilestone({
+      db,
+      requestId: request.id,
+      subject: `Unit Head verification completed: ${request.case_id}`,
+      body: `${req.body.verifier_name} completed the Unit Head verification for ${request.full_name}'s request (${request.case_id}).\n\nThe request is now awaiting pastoral verification.\n\nOpen the request in the Admin portal:\n${baseUrl(req)}/requests/${request.id}`,
+      activity: 'Admin notified of Unit Head verification completion'
+    });
 
     if (!request.leader_verification_sent_at) {
       const pastorLink = `${baseUrl(req)}/pastor-verify/${request.leader_verification_token}`;
@@ -158,6 +186,14 @@ CCI America Financial Assistance Committee`
 
     await db.run('UPDATE requests SET leader_verified=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', ['Complete', 'Pastoral Verification Complete', request.id]);
     await logActivity(request.id, null, 'Pastoral verification submitted', `${req.body.verifier_name} submitted pastoral verification`);
+
+    await notifyAdminOfMilestone({
+      db,
+      requestId: request.id,
+      subject: `Pastoral verification completed: ${request.case_id}`,
+      body: `${req.body.verifier_name} completed the pastoral verification for ${request.full_name}'s request (${request.case_id}).\n\nThe request is ready for reviewer assignment.\n\nOpen the request in the Admin portal:\n${baseUrl(req)}/requests/${request.id}`,
+      activity: 'Admin notified of pastoral verification completion'
+    });
 
     const notifiedCount = await notifyAssignedReviewers(db, req, request.id);
     if (notifiedCount > 0) {
@@ -272,6 +308,14 @@ CCI America Financial Assistance Committee`
 
       await logActivity(result.lastID, null, 'Request submitted', `Applicant submitted ${caseId}`);
       const trackingLink = `${baseUrl(req)}/track/${trackingToken}`;
+
+      await notifyAdminOfMilestone({
+        db,
+        requestId: result.lastID,
+        subject: `New financial assistance request: ${caseId}`,
+        body: `${req.body.full_name} submitted a new financial assistance request.\n\nCase ID: ${caseId}\nCategory: ${req.body.request_category}\nAmount requested: $${Number(req.body.amount_requested).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nCurrent status: ${initialStatus}\n\nOpen the request in the Admin portal:\n${baseUrl(req)}/requests/${result.lastID}`,
+        activity: 'Admin notified of new request'
+      });
 
       if (req.body.worker_status === 'Yes') {
         const leadershipLink = `${baseUrl(req)}/leadership-verify/${unitLeaderToken}`;
@@ -619,12 +663,17 @@ CCI America Financial Assistance Committee`
 
     const reviewCount = await db.get('SELECT COUNT(*) as count FROM reviews WHERE request_id=?', access.request_id);
     await db.run('UPDATE requests SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [(reviewCount.count || 0) >= 2 ? 'Reviews Complete' : 'Committee Review', access.request_id]);
-    if ((reviewCount.count || 0) >= 2) {
-      const delivery = await sendNotification({ db, requestId: access.request_id, recipientName: 'CCI Welfare Admin', recipientEmail: adminNotificationEmail, subject: `Two reviews completed: ${request.case_id}`, body: `Two independent reviewer assessments have now been submitted for ${request.case_id}. The case is ready for the committee/admin decision stage.` });
-      if (!delivery.success) {
-        await logActivity(access.request_id, null, 'Two-reviews-complete notification failed', delivery.reason || 'Email delivery failed');
-      }
-    }
+    const completedReviewCount = Number(reviewCount.count || 0);
+    const reviewProgress = completedReviewCount >= 2
+      ? 'The required independent reviews are complete, and the case is ready for the committee/admin decision stage.'
+      : `${2 - completedReviewCount} more independent review is still required.`;
+    await notifyAdminOfMilestone({
+      db,
+      requestId: access.request_id,
+      subject: `Reviewer completed review: ${request.case_id}`,
+      body: `${access.reviewer_name} completed a review for ${request.full_name}'s request (${request.case_id}).\n\nCompleted reviews: ${completedReviewCount}\n${reviewProgress}\n\nOpen the request in the Admin portal:\n${baseUrl(req)}/requests/${access.request_id}`,
+      activity: 'Admin notified of reviewer completion'
+    });
     res.render('review-submitted', { title: 'Review Submitted', publicPage: true, publicLabel: 'Secure reviewer workspace', access: { ...access, review_submitted_at: new Date().toISOString() } });
   });
 
