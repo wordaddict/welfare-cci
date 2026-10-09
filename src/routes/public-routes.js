@@ -27,6 +27,7 @@ function mountPublicRoutes(app, {
   saveUploadedFile,
   sendApplicantPaymentNotice,
   sendNotification,
+  sendPastorPaymentNotice,
   sendStoredFile,
   upload
 }) {
@@ -716,6 +717,7 @@ The system will now attempt to notify the applicant that the request was approve
     }
 
     const freshRequest = await db.get('SELECT * FROM requests WHERE id=?', request.id);
+    await sendPastorPaymentNotice(db, freshRequest);
     await sendApplicantPaymentNotice(db, req, freshRequest, {
       amount: req.body.amount_paid || request.amount_approved || request.amount_requested,
       method: req.body.payment_method || '',

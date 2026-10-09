@@ -17,6 +17,7 @@ const { applicantStatusInfo, buildSystemAssessment, isApprovalDecision, reviewSc
 const { mountAdminRoutes } = require('./src/routes/admin-routes');
 const { mountAuthRoutes } = require('./src/routes/auth-routes');
 const { mountPublicRoutes } = require('./src/routes/public-routes');
+const { createPastorNotificationService } = require('./src/pastor-notifications');
 const { createReviewerWorkflow } = require('./src/reviewer-workflow');
 const { appendStoredFileToArchive, getStoredFileByKey, saveUploadedFile, sendStoredFile } = require('./src/storage');
 
@@ -77,6 +78,12 @@ const financePacketService = createFinancePacketService({
   sendNotification,
   appendStoredFileToArchive,
   getStoredFileByKey
+});
+
+const pastorNotificationService = createPastorNotificationService({
+  logActivity,
+  money,
+  sendNotification
 });
 
 const upload = multer({
@@ -208,6 +215,7 @@ mountPublicRoutes(app, {
   saveUploadedFile,
   sendApplicantPaymentNotice,
   sendNotification,
+  sendPastorPaymentNotice: pastorNotificationService.sendPastorPaymentNotice,
   sendStoredFile,
   upload
 });
@@ -232,6 +240,7 @@ mountAdminRoutes(app, {
   reviewScoreTotal,
   sendApplicantCloseoutRequest,
   sendNotification,
+  sendPastorDecisionNotice: pastorNotificationService.sendPastorDecisionNotice,
   sendStoredFile
 });
 

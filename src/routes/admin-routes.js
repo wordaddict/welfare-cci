@@ -176,6 +176,7 @@ function mountAdminRoutes(app, {
   reviewScoreTotal,
   sendApplicantCloseoutRequest,
   sendNotification,
+  sendPastorDecisionNotice,
   sendStoredFile
 }) {
   app.get('/uploads/:filename', requireRole('admin'), async (req, res) => {
@@ -614,6 +615,9 @@ CCI America Financial Assistance Committee`
     const financePacketDelivery = await emailFinanceDecisionPacket(db, req, req.params.id);
 
     const updatedRequest = await db.get('SELECT * FROM requests WHERE id=?', req.params.id);
+    if (updatedRequest) {
+      await sendPastorDecisionNotice(db, updatedRequest, req.session.user.id);
+    }
     let applicantOutcomeQuery = 'not-applicable';
     if (updatedRequest && !isApprovalDecision(updatedRequest.decision) && updatedRequest.decision !== 'Escalated to Pastorate') {
       const trackingLink = `${baseUrl(req)}/track/${updatedRequest.tracking_token}`;
