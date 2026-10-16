@@ -523,55 +523,7 @@
 </section>
 
 
-<section class="card panel-card followup-closure-card">
-  <h2>Follow-Up Closure</h2>
-  <% if (request.status === 'Closed') { %>
-    <div class="success-panel followup-complete-panel">
-      <h3>Follow-up completed and case closed</h3>
-      <p>Thank you for handling this request. The case is now closed, the applicant tracker has been updated, and participating reviewers have been thanked for their service.</p>
-    </div>
-  <% } else if (!applicantFollowup) { %>
-    <% if (request.payment_confirmed_at && !request.applicant_followup_requested_at) { %>
-      <div class="success-panel">
-        <h3>Finance has confirmed payment</h3>
-        <p>Admin has been notified and the applicant has received the approval/support email. The system will automatically send the close-out form after 3 days.</p>
-      </div>
-      <form method="post" action="/requests/<%= request.id %>/send-closeout-now" class="stacked-form">
-        <button class="btn">Send Follow-Up Closure Now</button>
-        <p class="fine-print">Use this to bypass the normal 3-day waiting period and send the applicant's close-out form immediately.</p>
-      </form>
-    <% } else if (request.applicant_followup_requested_at) { %>
-      <div class="empty-state">
-        <b>Close-out form sent to applicant.</b>
-        <p>The request was sent on <%= request.applicant_followup_requested_at %>. Waiting for the applicant to complete the form and upload their receipt or payment evidence.</p>
-      </div>
-    <% } else { %>
-      <div class="empty-state">
-        <b>Waiting for finance payment confirmation.</b>
-        <p>The close-out process begins only after Finance confirms that the approved support has been paid.</p>
-      </div>
-    <% } %>
-  <% } else { %>
-    <div class="subtle-note"><b>Applicant close-out submitted:</b> <%= formatDateTime(applicantFollowup.created_at) %></div>
-    <div class="info-grid compact">
-      <div><span>Funds used as intended?</span><strong><%= applicantFollowup.funds_used_as_intended %></strong></div>
-      <div><span>Issue resolved?</span><strong><%= applicantFollowup.issue_resolved %></strong></div>
-      <div><span>Receipt received?</span><strong><%= applicantFollowup.receipt_received %></strong></div>
-    </div>
-    <% if (applicantFollowup.receipt_file) { %>
-      <p><a class="btn btn-soft" href="/uploads/<%= applicantFollowup.receipt_file %>" target="_blank">View applicant receipt / close-out evidence</a></p>
-    <% } %>
-    <p><b>Applicant note:</b> <%= applicantFollowup.notes || 'No note provided.' %></p>
-    <form method="post" action="/requests/<%= request.id %>/followup" class="stacked-form">
-      <input type="hidden" name="funds_used_as_intended" value="<%= applicantFollowup.funds_used_as_intended %>">
-      <input type="hidden" name="issue_resolved" value="<%= applicantFollowup.issue_resolved %>">
-      <input type="hidden" name="receipt_received" value="<%= applicantFollowup.receipt_received %>">
-      <label>Pastoral follow-up needed?<select name="pastoral_followup_needed"><option>No</option><option>Yes</option></select></label>
-      <label>Follow-up notes<textarea name="notes"></textarea></label>
-      <button class="btn">Complete Follow-Up and Close</button>
-    </form>
-  <% } %>
-</section>
+<%- include('partials_followup_closure') %>
 
 <section class="card panel-card">
   <h2>Activity Log</h2>

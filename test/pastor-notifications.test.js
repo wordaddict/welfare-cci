@@ -40,6 +40,7 @@ test('decision notice goes to the pastor who submitted verification', async () =
 
   assert.equal(harness.notifications.length, 1);
   assert.equal(harness.notifications[0].recipientEmail, 'verifying-pastor@example.org');
+  assert.match(harness.notifications[0].body, /^Dear Pastor Verifier,/);
   assert.match(harness.notifications[0].body, /Amount approved by the committee: \$1,000\.00/);
   assert.equal(harness.activities[0][2], 'Verifying pastor notified of committee decision');
 });
@@ -55,6 +56,7 @@ test('manual verification falls back to the pastor selected on the application',
 
   assert.equal(harness.notifications[0].recipientEmail, 'application-pastor@example.org');
   assert.equal(harness.notifications[0].recipientName, 'Pastor On Application');
+  assert.match(harness.notifications[0].body, /^Dear Pastor On Application,/);
 });
 
 test('payment notice shows and explains different approved and paid amounts', async () => {

@@ -352,6 +352,14 @@ function mountAdminRoutes(app, {
     const leadershipVerifications = await db.all('SELECT * FROM leadership_verifications WHERE request_id=? ORDER BY created_at DESC', req.params.id);
     const logs = await db.all('SELECT l.*, u.name as user_name FROM activity_logs l LEFT JOIN users u ON u.id=l.user_id WHERE l.request_id=? ORDER BY l.created_at DESC', req.params.id);
     const applicantFollowup = await db.get('SELECT * FROM followups WHERE request_id=? AND submitted_by_applicant=1 ORDER BY created_at DESC LIMIT 1', req.params.id);
+    const closureFollowup = await db.get(`
+      SELECT f.*, u.name AS completed_by_name
+      FROM followups f
+      LEFT JOIN users u ON u.id = f.completed_by
+      WHERE f.request_id=? AND COALESCE(f.submitted_by_applicant, 0)=0
+      ORDER BY f.created_at DESC
+      LIMIT 1
+    `, req.params.id);
     const financeNotification = request.decision
       ? await db.get(
           `SELECT * FROM notifications
@@ -372,6 +380,7 @@ function mountAdminRoutes(app, {
       leadershipVerifications,
       logs,
       applicantFollowup,
+      closureFollowup,
       financeNotification,
       financePacketState: financePacketStateForView(request, financeNotification),
       financeTeamEmail: getAppConfig().jobs.financeTeamEmail,

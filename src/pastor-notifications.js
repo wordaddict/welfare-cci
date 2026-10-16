@@ -12,6 +12,11 @@ function amountsDiffer(left, right) {
   return Math.round(Number(left || 0) * 100) !== Math.round(Number(right || 0) * 100);
 }
 
+function pastorGreeting(name) {
+  const pastorName = String(name || '').trim().replace(/^pastor\s+/i, '');
+  return pastorName ? `Dear Pastor ${pastorName},` : 'Dear Pastor,';
+}
+
 function createPastorNotificationService({ logActivity, money, sendNotification }) {
   async function getVerifyingPastor(db, request) {
     const verification = await db.get(
@@ -64,7 +69,7 @@ function createPastorNotificationService({ logActivity, money, sendNotification 
       request,
       actorId,
       subject: `Committee decision for ${request.full_name}: ${request.case_id}`,
-      body: (pastor) => `Dear ${pastor.name || 'Pastor'},
+      body: (pastor) => `${pastorGreeting(pastor.name)}
 
 Thank you for completing the pastoral verification for ${request.full_name}'s financial assistance request.
 
@@ -97,7 +102,7 @@ CCI America Financial Assistance Committee`,
       request,
       actorId,
       subject: `Payment confirmed for ${request.full_name}: ${request.case_id}`,
-      body: (pastor) => `Dear ${pastor.name || 'Pastor'},
+      body: (pastor) => `${pastorGreeting(pastor.name)}
 
 Finance has confirmed payment for ${request.full_name}'s financial assistance request.
 
@@ -126,5 +131,6 @@ CCI America Financial Assistance Committee`,
 module.exports = {
   amountForCommitteeDecision,
   amountsDiffer,
-  createPastorNotificationService
+  createPastorNotificationService,
+  pastorGreeting
 };

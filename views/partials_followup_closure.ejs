@@ -1,0 +1,172 @@
+<section class="card panel-card followup-closure-card">
+  <div class="section-title-row followup-title-row">
+    <div>
+      <p class="eyebrow dark">Case close-out</p>
+      <h2>Follow-Up Closure</h2>
+    </div>
+    <% if (request.status === 'Closed') { %>
+      <span class="status-pill success">Closed</span>
+    <% } else if (applicantFollowup) { %>
+      <span class="status-pill warning">Admin review needed</span>
+    <% } else { %>
+      <span class="status-pill">Awaiting response</span>
+    <% } %>
+  </div>
+
+  <% if (request.status === 'Closed') { %>
+    <div class="success-panel followup-complete-panel" role="status">
+      <div class="followup-complete-icon" aria-hidden="true">✓</div>
+      <div>
+        <h3>Follow-up completed and case closed</h3>
+        <p>The applicant’s close-out response and the admin’s final closure record remain available below for reference.</p>
+        <% if (closureFollowup) { %>
+          <p class="followup-complete-meta">
+            Closed <%= formatDateTime(closureFollowup.created_at) %>
+            <% if (closureFollowup.completed_by_name) { %> by <%= closureFollowup.completed_by_name %><% } %>
+          </p>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="followup-record-grid">
+      <section class="followup-record-card" aria-labelledby="applicant-closeout-heading">
+        <div class="followup-record-heading">
+          <span class="followup-step">1</span>
+          <div>
+            <p class="followup-record-kicker">Submitted by applicant</p>
+            <h3 id="applicant-closeout-heading">Applicant close-out</h3>
+          </div>
+        </div>
+
+        <% if (applicantFollowup) { %>
+          <p class="followup-record-date">Received <%= formatDateTime(applicantFollowup.created_at) %></p>
+          <dl class="followup-answer-list">
+            <div><dt>Funds used as intended?</dt><dd><%= applicantFollowup.funds_used_as_intended || 'Not recorded' %></dd></div>
+            <div><dt>Issue resolved?</dt><dd><%= applicantFollowup.issue_resolved || 'Not recorded' %></dd></div>
+            <div><dt>Receipt received?</dt><dd><%= applicantFollowup.receipt_received || 'Not recorded' %></dd></div>
+          </dl>
+          <div class="followup-note-block">
+            <span>Applicant note</span>
+            <p><%= applicantFollowup.notes || 'No note provided.' %></p>
+          </div>
+          <% if (applicantFollowup.receipt_file) { %>
+            <a class="btn btn-soft followup-evidence-link" href="/uploads/<%= applicantFollowup.receipt_file %>" target="_blank" rel="noopener">View receipt / close-out evidence</a>
+          <% } else { %>
+            <p class="followup-missing-evidence">No receipt or close-out evidence is attached to this record.</p>
+          <% } %>
+        <% } else { %>
+          <div class="empty-state followup-empty-state">
+            <b>No applicant close-out is attached.</b>
+            <p>This case was closed without an applicant follow-up record.</p>
+          </div>
+        <% } %>
+      </section>
+
+      <section class="followup-record-card followup-admin-card" aria-labelledby="admin-closure-heading">
+        <div class="followup-record-heading">
+          <span class="followup-step">2</span>
+          <div>
+            <p class="followup-record-kicker">Completed by admin</p>
+            <h3 id="admin-closure-heading">Administrative closure</h3>
+          </div>
+        </div>
+
+        <% if (closureFollowup) { %>
+          <p class="followup-record-date">Recorded <%= formatDateTime(closureFollowup.created_at) %></p>
+          <dl class="followup-answer-list">
+            <div>
+              <dt>Pastoral follow-up needed?</dt>
+              <dd class="<%= closureFollowup.pastoral_followup_needed === 'Yes' ? 'followup-answer-attention' : '' %>"><%= closureFollowup.pastoral_followup_needed || 'Not recorded' %></dd>
+            </div>
+            <div><dt>Closed by</dt><dd><%= closureFollowup.completed_by_name || 'Admin user' %></dd></div>
+          </dl>
+          <div class="followup-note-block">
+            <span>Admin closure notes</span>
+            <p><%= closureFollowup.notes || 'No administrative closure notes provided.' %></p>
+          </div>
+          <% if (closureFollowup.pastoral_followup_needed === 'Yes') { %>
+            <div class="followup-attention-note"><b>Pastoral follow-up was marked as needed.</b> Review the closure notes and activity log for any next steps.</div>
+          <% } %>
+        <% } else { %>
+          <div class="empty-state followup-empty-state">
+            <b>No administrative closure details were recorded.</b>
+            <p>The case has a Closed status, but there is no matching final closure entry. This can occur for older or manually closed cases.</p>
+          </div>
+        <% } %>
+      </section>
+    </div>
+  <% } else if (!applicantFollowup) { %>
+    <% if (request.payment_confirmed_at && !request.applicant_followup_requested_at) { %>
+      <div class="success-panel">
+        <h3>Finance has confirmed payment</h3>
+        <p>Admin has been notified and the applicant has received the approval/support email. The system will automatically send the close-out form after 3 days.</p>
+      </div>
+      <form method="post" action="/requests/<%= request.id %>/send-closeout-now" class="stacked-form followup-action-form">
+        <button class="btn">Send Follow-Up Closure Now</button>
+        <p class="fine-print">Use this to bypass the normal 3-day waiting period and send the applicant’s close-out form immediately.</p>
+      </form>
+    <% } else if (request.applicant_followup_requested_at) { %>
+      <div class="empty-state">
+        <b>Close-out form sent to applicant.</b>
+        <p>The request was sent on <%= formatDateTime(request.applicant_followup_requested_at) %>. Waiting for the applicant to complete the form and upload their receipt or payment evidence.</p>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <b>Waiting for finance payment confirmation.</b>
+        <p>The close-out process begins only after Finance confirms that the approved support has been paid.</p>
+      </div>
+    <% } %>
+  <% } else { %>
+    <div class="followup-review-layout">
+      <section class="followup-record-card" aria-labelledby="pending-applicant-closeout-heading">
+        <div class="followup-record-heading">
+          <span class="followup-step">1</span>
+          <div>
+            <p class="followup-record-kicker">Submitted by applicant</p>
+            <h3 id="pending-applicant-closeout-heading">Review applicant response</h3>
+          </div>
+        </div>
+        <p class="followup-record-date">Received <%= formatDateTime(applicantFollowup.created_at) %></p>
+        <dl class="followup-answer-list">
+          <div><dt>Funds used as intended?</dt><dd><%= applicantFollowup.funds_used_as_intended || 'Not recorded' %></dd></div>
+          <div><dt>Issue resolved?</dt><dd><%= applicantFollowup.issue_resolved || 'Not recorded' %></dd></div>
+          <div><dt>Receipt received?</dt><dd><%= applicantFollowup.receipt_received || 'Not recorded' %></dd></div>
+        </dl>
+        <div class="followup-note-block">
+          <span>Applicant note</span>
+          <p><%= applicantFollowup.notes || 'No note provided.' %></p>
+        </div>
+        <% if (applicantFollowup.receipt_file) { %>
+          <a class="btn btn-soft followup-evidence-link" href="/uploads/<%= applicantFollowup.receipt_file %>" target="_blank" rel="noopener">View receipt / close-out evidence</a>
+        <% } %>
+      </section>
+
+      <section class="followup-record-card followup-admin-card" aria-labelledby="complete-admin-closure-heading">
+        <div class="followup-record-heading">
+          <span class="followup-step">2</span>
+          <div>
+            <p class="followup-record-kicker">Admin action required</p>
+            <h3 id="complete-admin-closure-heading">Complete final closure</h3>
+          </div>
+        </div>
+        <p class="muted">Record whether pastoral follow-up is needed, add any internal closure context, and then close the case.</p>
+        <form method="post" action="/requests/<%= request.id %>/followup" class="stacked-form followup-close-form">
+          <input type="hidden" name="funds_used_as_intended" value="<%= applicantFollowup.funds_used_as_intended %>">
+          <input type="hidden" name="issue_resolved" value="<%= applicantFollowup.issue_resolved %>">
+          <input type="hidden" name="receipt_received" value="<%= applicantFollowup.receipt_received %>">
+          <label>Pastoral follow-up needed?
+            <select name="pastoral_followup_needed" required>
+              <option value="No">No</option>
+              <option value="Yes">Yes</option>
+            </select>
+          </label>
+          <label>Admin closure notes
+            <textarea name="notes" placeholder="Add any final context, actions taken, or next steps."></textarea>
+          </label>
+          <button class="btn">Complete Follow-Up and Close Case</button>
+          <p class="fine-print">This closes the case, updates the applicant’s tracker, and sends closure notifications.</p>
+        </form>
+      </section>
+    </div>
+  <% } %>
+</section>
