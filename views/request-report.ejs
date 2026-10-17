@@ -141,11 +141,11 @@
           <% } %>
           <% reviews.slice(0,4).forEach(r=>{ %>
             <tr>
-              <td><%= r.reviewer_name %></td>
-              <td><%= r.score_total || 0 %>/21</td>
-              <td><%= r.recommended_decision %></td>
-              <td><%= money(r.recommended_amount) %></td>
-              <td><%= brief(r.notes, 55) %></td>
+              <td data-label="Reviewer"><%= r.reviewer_name %></td>
+              <td data-label="Score"><%= r.score_total || 0 %>/21</td>
+              <td data-label="Recommendation"><%= r.recommended_decision %></td>
+              <td data-label="Amount"><%= money(r.recommended_amount) %></td>
+              <td data-label="Key note"><%= brief(r.notes, 55) %></td>
             </tr>
           <% }) %>
         </tbody>

@@ -3981,3 +3981,146 @@ hr {
     flex-direction: column;
   }
 }
+
+/* Keep cards quiet: use consistent outlines instead of decorative accent strips. */
+.section-title::before,
+.panel-stat::before,
+.form.card > h2::before {
+  display: none;
+}
+
+.form.card,
+.dashboard-kpi-card.dashboard-kpi-card--money,
+.dashboard-kpi-card.dashboard-kpi-card--success,
+.dashboard-kpi-card.dashboard-kpi-card--warning,
+.dashboard-kpi-card.dashboard-kpi-card--neutral,
+.followup-closure-card,
+.report-summary,
+.applicant-followup-card,
+.track-hero,
+.urgency-triage-card {
+  border: 1px solid var(--line);
+}
+
+.subtle-note,
+.note,
+.field-help,
+.leader-response-card,
+.review-report-card,
+.followup-record-card,
+.followup-note-block,
+.status-message,
+.score-total-box,
+.score-strip,
+.evidence-summary-box,
+.verification-subsection,
+.eligibility-banner,
+.eligibility-banner.success,
+.eligibility-banner.warning,
+.eligibility-banner.danger {
+  border-left: 1px solid #e2e6ec;
+}
+
+/* Keep report columns readable before the mobile card layout takes over. */
+.reports-table-head--category,
+.reports-table-row--category {
+  grid-template-columns: minmax(180px, 1fr) 90px minmax(110px, .7fr) minmax(110px, .7fr);
+}
+
+@media (max-width: 1100px) {
+  .reports-overview-grid {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .reports-table-head {
+    display: none;
+  }
+
+  .reports-table-row--category {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-grid-onepage,
+.report-box,
+.reviewer-summary-box {
+  min-width: 0;
+}
+
+.compact-evidence-list a {
+  overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 640px) {
+  .reviewer-summary-box .onepage-table,
+  .reviewer-summary-box tbody,
+  .reviewer-summary-box tr,
+  .reviewer-summary-box td {
+    display: block;
+    width: 100%;
+  }
+
+  .reviewer-summary-box thead {
+    display: none;
+  }
+
+  .reviewer-summary-box tr {
+    padding: 8px 0;
+    border-bottom: 1px solid #eaecf0;
+  }
+
+  .reviewer-summary-box tr:last-child {
+    border-bottom: 0;
+  }
+
+  .reviewer-summary-box td {
+    display: grid;
+    grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+    gap: 10px;
+    padding: 6px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .reviewer-summary-box td::before {
+    content: attr(data-label);
+    color: #667085;
+    font-size: .68rem;
+    font-weight: 700;
+  }
+
+  .reviewer-summary-box td[colspan]::before {
+    display: none;
+  }
+}
+
+@media (max-width: 920px) {
+  .hero-premium {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy,
+  .hero-panel {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .progress-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .progress-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.password-reveal-toggle,
+.case-status-panel .btn {
+  min-height: 44px;
+}

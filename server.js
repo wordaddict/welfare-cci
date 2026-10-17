@@ -246,7 +246,11 @@ mountAdminRoutes(app, {
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).render('error', { title: 'Error', message: err.message || 'Something went wrong.' });
+  if (res.headersSent) return next(err);
+  res.status(500).render('error', {
+    title: 'Something went wrong',
+    message: 'We could not load this page. Please refresh and try again. If the problem continues, contact an administrator.'
+  });
 });
 
 async function bootstrapAdminIfConfigured() {

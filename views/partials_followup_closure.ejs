@@ -1,3 +1,22 @@
+<%
+  // Keep this included view self-contained. EJS includes do not reliably inherit
+  // helper functions declared as lexical variables in their parent template.
+  const formatFollowupDateTime = typeof formatDateTime === 'function'
+    ? formatDateTime
+    : (value) => {
+        if (!value) return 'Not recorded';
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+      };
+%>
+
 <section class="card panel-card followup-closure-card">
   <div class="section-title-row followup-title-row">
     <div>
@@ -21,7 +40,7 @@
         <p>The applicant’s close-out response and the admin’s final closure record remain available below for reference.</p>
         <% if (closureFollowup) { %>
           <p class="followup-complete-meta">
-            Closed <%= formatDateTime(closureFollowup.created_at) %>
+            Closed <%= formatFollowupDateTime(closureFollowup.created_at) %>
             <% if (closureFollowup.completed_by_name) { %> by <%= closureFollowup.completed_by_name %><% } %>
           </p>
         <% } %>
@@ -39,7 +58,7 @@
         </div>
 
         <% if (applicantFollowup) { %>
-          <p class="followup-record-date">Received <%= formatDateTime(applicantFollowup.created_at) %></p>
+          <p class="followup-record-date">Received <%= formatFollowupDateTime(applicantFollowup.created_at) %></p>
           <dl class="followup-answer-list">
             <div><dt>Funds used as intended?</dt><dd><%= applicantFollowup.funds_used_as_intended || 'Not recorded' %></dd></div>
             <div><dt>Issue resolved?</dt><dd><%= applicantFollowup.issue_resolved || 'Not recorded' %></dd></div>
@@ -72,7 +91,7 @@
         </div>
 
         <% if (closureFollowup) { %>
-          <p class="followup-record-date">Recorded <%= formatDateTime(closureFollowup.created_at) %></p>
+          <p class="followup-record-date">Recorded <%= formatFollowupDateTime(closureFollowup.created_at) %></p>
           <dl class="followup-answer-list">
             <div>
               <dt>Pastoral follow-up needed?</dt>
@@ -108,7 +127,7 @@
     <% } else if (request.applicant_followup_requested_at) { %>
       <div class="empty-state">
         <b>Close-out form sent to applicant.</b>
-        <p>The request was sent on <%= formatDateTime(request.applicant_followup_requested_at) %>. Waiting for the applicant to complete the form and upload their receipt or payment evidence.</p>
+        <p>The request was sent on <%= formatFollowupDateTime(request.applicant_followup_requested_at) %>. Waiting for the applicant to complete the form and upload their receipt or payment evidence.</p>
       </div>
     <% } else { %>
       <div class="empty-state">
@@ -126,7 +145,7 @@
             <h3 id="pending-applicant-closeout-heading">Review applicant response</h3>
           </div>
         </div>
-        <p class="followup-record-date">Received <%= formatDateTime(applicantFollowup.created_at) %></p>
+        <p class="followup-record-date">Received <%= formatFollowupDateTime(applicantFollowup.created_at) %></p>
         <dl class="followup-answer-list">
           <div><dt>Funds used as intended?</dt><dd><%= applicantFollowup.funds_used_as_intended || 'Not recorded' %></dd></div>
           <div><dt>Issue resolved?</dt><dd><%= applicantFollowup.issue_resolved || 'Not recorded' %></dd></div>

@@ -13,6 +13,7 @@
       minute: '2-digit'
     });
   };
+  const availablePastors = typeof pastors !== 'undefined' && Array.isArray(pastors) ? pastors : [];
 %>
 
 <section class="case-hero">
@@ -292,7 +293,7 @@
           <label>Correct Pastor / branch and resend verification
             <select name="leader_email" required>
               <option value="">Select</option>
-              <% (pastors || []).forEach((pastor) => { %>
+              <% availablePastors.forEach((pastor) => { %>
                 <option value="<%= pastor.email %>" <%= String(request.leader_email || '').toLowerCase() === pastor.email ? 'selected' : '' %>><%= pastor.branch %> - <%= pastor.email %></option>
               <% }) %>
             </select>
@@ -523,7 +524,7 @@
 </section>
 
 
-<%- include('partials_followup_closure') %>
+<%- include('partials_followup_closure', { formatDateTime }) %>
 
 <section class="card panel-card">
   <h2>Activity Log</h2>
