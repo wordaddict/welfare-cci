@@ -36,13 +36,38 @@ test('decision notice goes to the pastor who submitted verification', async () =
     verifier_email: 'verifying-pastor@example.org'
   });
 
-  await harness.service.sendPastorDecisionNotice(harness.db, baseRequest, 7);
+  const request = {
+    ...baseRequest,
+    decision_notes: 'Approved for one-time rent support while the applicant completes a payment plan.'
+  };
+
+  await harness.service.sendPastorDecisionNotice(harness.db, request, 7);
 
   assert.equal(harness.notifications.length, 1);
   assert.equal(harness.notifications[0].recipientEmail, 'verifying-pastor@example.org');
   assert.match(harness.notifications[0].body, /^Dear Pastor Verifier,/);
   assert.match(harness.notifications[0].body, /Amount approved by the committee: \$1,000\.00/);
+  assert.match(
+    harness.notifications[0].body,
+    /Committee decision note: Approved for one-time rent support while the applicant completes a payment plan\./
+  );
   assert.equal(harness.activities[0][2], 'Verifying pastor notified of committee decision');
+});
+
+test('decision notice omits the decision note field when no note is recorded', async () => {
+  const harness = buildHarness({
+    verified_by: null,
+    verifier_name: 'Pastor Verifier',
+    verifier_email: 'verifying-pastor@example.org'
+  });
+
+  await harness.service.sendPastorDecisionNotice(
+    harness.db,
+    { ...baseRequest, decision_notes: '   ' },
+    7
+  );
+
+  assert.doesNotMatch(harness.notifications[0].body, /Committee decision note:/);
 });
 
 test('manual verification falls back to the pastor selected on the application', async () => {

@@ -63,6 +63,17 @@ function createPastorNotificationService({ logActivity, money, sendNotification 
   async function sendPastorDecisionNotice(db, request, actorId = null) {
     const approvedAmount = amountForCommitteeDecision(request);
     const approved = String(request.decision || '').includes('Approval');
+    const decisionNote = String(request.decision_notes || '').trim();
+    const decisionFields = [
+      `Case ID: ${request.case_id}`,
+      `Applicant: ${request.full_name}`,
+      `Committee decision: ${request.decision}`,
+      `Amount approved by the committee: ${money(approvedAmount)}`
+    ];
+
+    if (decisionNote) {
+      decisionFields.push(`Committee decision note: ${decisionNote}`);
+    }
 
     return sendPastorNotice({
       db,
@@ -75,10 +86,7 @@ Thank you for completing the pastoral verification for ${request.full_name}'s fi
 
 The CCI America Financial Assistance Committee has now recorded its decision.
 
-Case ID: ${request.case_id}
-Applicant: ${request.full_name}
-Committee decision: ${request.decision}
-Amount approved by the committee: ${money(approvedAmount)}
+${decisionFields.join('\n')}
 
 ${approved ? 'The request will now proceed to the Finance team for payment processing. You will receive another email when Finance confirms the amount actually paid.' : 'No payment is currently scheduled for this decision.'}
 
