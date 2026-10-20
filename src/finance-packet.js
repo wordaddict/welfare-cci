@@ -457,6 +457,38 @@ function buildFinanceSummaryPdfBuffer({ request, docs = [], verifications, assig
 }
 
 function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotification, appendStoredFileToArchive, getStoredFileByKey, fetchImpl = global.fetch }) {
+  async function postFinanceExpensePayload(payload, financeConfig) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), financeConfig.timeoutMs);
+    let response;
+    try {
+      response = await fetchImpl(financeExpenseEndpoint(financeConfig), {
+        method: 'POST',
+        headers: financeExpenseRequestHeaders(financeConfig),
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const responseBody = await response.text();
+    let responseJson = {};
+    try {
+      responseJson = responseBody ? JSON.parse(responseBody) : {};
+    } catch (error) {
+      responseJson = {};
+    }
+    const duplicate = response.status === 409 || !!(responseJson && responseJson.duplicate);
+    if (!response.ok && !duplicate) throw new Error(responseErrorSummary(response.status, responseBody));
+
+    return {
+      duplicate,
+      externalId: String(responseJson.externalId || responseJson.id || payload.externalId),
+      status: response.status
+    };
+  }
+
   async function buildFinancePacketZipBuffer({ request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {
     const db = await getDb();
     const pdfBuffer = await buildFinanceSummaryPdfBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
@@ -639,31 +671,8 @@ CCI America Financial Assistance Committee`;
     try {
       const packetBuffer = artifacts.packetBuffer || await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
       const payload = buildFinanceExpensePayload({ request, packetBuffer });
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), appConfig.financeExpense.timeoutMs);
-      let response;
-      try {
-        response = await fetchImpl(financeExpenseEndpoint(appConfig.financeExpense), {
-          method: 'POST',
-          headers: financeExpenseRequestHeaders(appConfig.financeExpense),
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      const responseBody = await response.text();
-      let responseJson = {};
-      try {
-        responseJson = responseBody ? JSON.parse(responseBody) : {};
-      } catch (error) {
-        responseJson = {};
-      }
-      const duplicate = response.status === 409 || !!(responseJson && responseJson.duplicate);
-      if (!response.ok && !duplicate) throw new Error(responseErrorSummary(response.status, responseBody));
-
-      const externalId = responseJson.externalId || responseJson.id || payload.externalId;
+      const submission = await postFinanceExpensePayload(payload, appConfig.financeExpense);
+      const externalId = submission.externalId;
       await db.run(
         'UPDATE requests SET finance_expense_created_at=CURRENT_TIMESTAMP, finance_expense_external_id=?, finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=NULL WHERE id=?',
         [String(externalId), request.id]
@@ -671,10 +680,10 @@ CCI America Financial Assistance Committee`;
       await logActivity(
         request.id,
         actorId,
-        duplicate ? 'Finance expense already exists' : 'Finance expense created',
+        submission.duplicate ? 'Finance expense already exists' : 'Finance expense created',
         String(externalId)
       );
-      return { success: true, duplicate, externalId: String(externalId) };
+      return { success: true, ...submission };
     } catch (error) {
       const reason = error && error.name === 'AbortError'
         ? `Finance API request timed out after ${appConfig.financeExpense.timeoutMs}ms.`

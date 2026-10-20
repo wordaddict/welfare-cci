@@ -220,7 +220,6 @@ mountPublicRoutes(app, {
   upload
 });
 mountAdminRoutes(app, {
-  appConfig,
   baseUrl,
   buildFinancePacketZipBuffer: financePacketService.buildFinancePacketZipBuffer,
   buildFinanceSummaryPdfBuffer: financePacketService.buildFinanceSummaryPdfBuffer,
@@ -242,7 +241,8 @@ mountAdminRoutes(app, {
   sendNotification,
   sendPastorDecisionNotice: pastorNotificationService.sendPastorDecisionNotice,
   sendStoredFile,
-  submitApprovedExpenseToFinanceSystem: financePacketService.submitApprovedExpenseToFinanceSystem
+  submitApprovedExpenseToFinanceSystem: financePacketService.submitApprovedExpenseToFinanceSystem,
+  upload
 });
 
 app.use((err, req, res, next) => {

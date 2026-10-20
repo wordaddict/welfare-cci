@@ -185,7 +185,8 @@ function mountAdminRoutes(app, {
   sendNotification,
   sendPastorDecisionNotice,
   sendStoredFile,
-  submitApprovedExpenseToFinanceSystem
+  submitApprovedExpenseToFinanceSystem,
+  upload
 }) {
   app.get('/uploads/:filename', requireRole('admin'), async (req, res) => {
     const safeName = path.basename(req.params.filename);
