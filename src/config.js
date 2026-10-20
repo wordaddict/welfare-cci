@@ -43,6 +43,11 @@ const envSchema = z.object({
   FINANCE_TEAM_NAME: z.preprocess(emptyToUndefined, z.string().default('CCI USA Finance Team')),
   FINANCE_TEAM_EMAIL: z.preprocess(emptyToUndefined, z.string().email().default('finance@cci.local')),
   FINANCE_TEAM_CC_EMAIL: optionalString(),
+  FINANCE_EXPENSE_API_URL: optionalUrl(),
+  FINANCE_EXPENSE_API_SECRET: optionalString(),
+  FINANCE_EXPENSE_API_TOKEN: optionalString(),
+  FINANCE_EXPENSE_API_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  WORKFLOW_EXPENSE_REQUESTER_EMAIL: z.preprocess(emptyToUndefined, z.string().email().optional()),
   CLOUDINARY_CLOUD_NAME: optionalString(),
   CLOUDINARY_API_KEY: optionalString(),
   CLOUDINARY_API_SECRET: optionalString(),
@@ -197,6 +202,14 @@ function getAppConfig() {
     sessionSecret: env.SESSION_SECRET || 'dev-secret-change-me',
     email: buildEmailConfig(env),
     storage: buildStorageConfig(env),
+    financeExpense: {
+      apiUrl: env.FINANCE_EXPENSE_API_URL ? env.FINANCE_EXPENSE_API_URL.replace(/\/$/, '') : undefined,
+      apiSecret: env.FINANCE_EXPENSE_API_SECRET,
+      apiToken: env.FINANCE_EXPENSE_API_TOKEN,
+      requesterEmail: env.WORKFLOW_EXPENSE_REQUESTER_EMAIL,
+      timeoutMs: env.FINANCE_EXPENSE_API_TIMEOUT_MS,
+      enabled: !!(env.FINANCE_EXPENSE_API_URL && (env.FINANCE_EXPENSE_API_SECRET || env.FINANCE_EXPENSE_API_TOKEN))
+    },
     jobs: buildJobsConfig(env)
   };
   return cachedConfig;

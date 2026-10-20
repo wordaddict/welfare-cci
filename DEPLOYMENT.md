@@ -77,8 +77,15 @@ heroku config:set ADMIN_BOOTSTRAP_PASSWORD=<strong-password-12+-characters>
 heroku config:set ADMIN_EMAIL=<admin-notification-email>
 heroku config:set FINANCE_TEAM_NAME="CCI USA Finance Team"
 heroku config:set FINANCE_TEAM_EMAIL=<finance-email>
+heroku config:set FINANCE_EXPENSE_API_URL=<finance-app-base-url>
+heroku config:set FINANCE_EXPENSE_API_SECRET=<finance-api-secret>
+heroku config:set WORKFLOW_EXPENSE_REQUESTER_EMAIL=adeyinkamichealola@gmail.com
 heroku config:set AUTO_ASSIGN_REVIEWERS=false
 ```
+
+`FINANCE_EXPENSE_API_SECRET` is sent as a bearer token to `/api/integrations/workflow/expenses` and must match the finance app's `WORKFLOW_EXPENSE_API_SECRET`. `WORKFLOW_EXPENSE_REQUESTER_EMAIL` must resolve to an active service user in the finance system. `FINANCE_EXPENSE_API_TOKEN` is also supported as an alternate bearer token. Approved final committee decisions are submitted automatically. A failed API call does not roll back the recorded committee decision; Admin can retry it from the request page.
+
+The expense payload always uses the `FOLLOW_UP` team and the campus selected on the application. Do not configure legacy default-team or default-campus overrides for this workflow.
 
 ## 6. Choose a scheduler mode
 

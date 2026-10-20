@@ -3,11 +3,83 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { CCI_CAMPUSES } = require('./campuses');
 const { getAppConfig } = require('./config');
 const { money } = require('./helpers');
 const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment');
 
 const MAX_EMAIL_SIZE_BYTES = 40 * 1024 * 1024;
+const FINANCE_CATEGORY = 'Financial Welfare/Assistance';
+
+function approvedAmountCents(request) {
+  const hasApprovedAmount = request.amount_approved !== null
+    && request.amount_approved !== undefined
+    && request.amount_approved !== '';
+  const amount = Number(hasApprovedAmount ? request.amount_approved : (request.amount_requested || 0));
+  const cents = Math.round(amount * 100);
+  if (!Number.isSafeInteger(cents) || cents <= 0) {
+    throw new Error('The approved amount must be greater than zero before sending the expense to Finance.');
+  }
+  return cents;
+}
+
+function buildFinanceExpensePayload({ request, packetBuffer }) {
+  if (!request || !request.case_id) throw new Error('A valid welfare request is required.');
+  if (!CCI_CAMPUSES.includes(request.cci_community_name)) {
+    throw new Error(`The request campus "${request.cci_community_name || 'Not provided'}" is not supported by the finance system.`);
+  }
+  if (!Buffer.isBuffer(packetBuffer)) throw new Error('A finance packet ZIP is required.');
+
+  const amountCents = approvedAmountCents(request);
+  const externalId = `WELFARE-${request.case_id}`;
+
+  return {
+    externalId,
+    title: `Financial assistance for ${request.case_id}`,
+    amountCents,
+    team: 'FOLLOW_UP',
+    campus: request.cci_community_name,
+    description: 'Approved financial assistance request.',
+    notes: 'Approved by the welfare committee.',
+    category: FINANCE_CATEGORY,
+    urgency: 2,
+    eventDate: null,
+    eventName: null,
+    fullEventBudgetCents: null,
+    payToExternal: true,
+    payeeName: request.zelle_name || request.full_name,
+    payeeZelle: request.zelle_email || request.zelle_phone || '',
+    items: [{
+      description: 'Approved financial assistance',
+      category: FINANCE_CATEGORY,
+      quantity: 1,
+      unitPriceCents: amountCents,
+      amountCents
+    }],
+    packet: {
+      fileName: `${externalId}.zip`,
+      mimeType: 'application/zip',
+      base64: packetBuffer.toString('base64')
+    }
+  };
+}
+
+function responseErrorSummary(status, body) {
+  const normalized = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  return `Finance API returned HTTP ${status}${normalized ? `: ${normalized}` : '.'}`;
+}
+
+function financeExpenseRequestHeaders(config) {
+  const bearerToken = config.apiToken || config.apiSecret;
+  return {
+    'Content-Type': 'application/json',
+    ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {})
+  };
+}
+
+function financeExpenseEndpoint(config) {
+  return `${String(config.apiUrl || '').replace(/\/$/, '')}/api/integrations/workflow/expenses`;
+}
 
 function estimateBase64Size(byteLength) {
   return Math.ceil(Number(byteLength || 0) / 3) * 4;
@@ -384,7 +456,7 @@ function buildFinanceSummaryPdfBuffer({ request, docs = [], verifications, assig
   });
 }
 
-function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotification, appendStoredFileToArchive, getStoredFileByKey }) {
+function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotification, appendStoredFileToArchive, getStoredFileByKey, fetchImpl = global.fetch }) {
   async function buildFinancePacketZipBuffer({ request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {
     const db = await getDb();
     const pdfBuffer = await buildFinanceSummaryPdfBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
@@ -443,11 +515,22 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
       request.finance_confirm_token = token;
     }
     const packetBuffer = await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
+    const financeExpenseDelivery = approved
+      ? await submitApprovedExpenseToFinanceSystem(db, req, requestId, {
+          request,
+          docs,
+          verifications,
+          assignedReviewers,
+          reviews,
+          reviewSummary,
+          packetBuffer
+        })
+      : { success: false, skipped: true, reason: 'Only approved requests are sent to the finance system.' };
     const estimatedEncodedSize = estimateBase64Size(packetBuffer.length);
     if (estimatedEncodedSize > MAX_EMAIL_SIZE_BYTES) {
       const reason = `Finance packet is too large to email (${formatBytes(packetBuffer.length)} raw, ~${formatBytes(estimatedEncodedSize)} after Base64 encoding).`;
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${reason}`);
-      return { success: false, provider: 'attachment-check', reason };
+      return { success: false, provider: 'attachment-check', reason, financeExpense: financeExpenseDelivery };
     }
     const amountForAction = approved ? money(request.amount_approved || request.amount_requested) : 'No payment action requested';
     const confirmLink = `${baseUrl(req)}/finance-confirm/${token}`;
@@ -502,27 +585,121 @@ CCI America Financial Assistance Committee`;
     });
     if (!delivery.success) {
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet email failed', `${financeEmail}: ${delivery.reason || 'Email delivery failed'}`);
+      delivery.financeExpense = financeExpenseDelivery;
       return delivery;
     }
 
     if (delivery.preview) {
       await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet previewed', `Previewed locally for ${financeEmail} with committee decision: ${request.decision}`);
+      delivery.financeExpense = financeExpenseDelivery;
       return delivery;
     }
 
     await db.run('UPDATE requests SET finance_packet_sent_at=CURRENT_TIMESTAMP WHERE id=?', request.id);
     await logActivity(request.id, req.session && req.session.user ? req.session.user.id : null, 'Finance packet emailed', `Sent to ${financeEmail}${financeCcEmails.length ? `; cc ${financeCcEmails.join(', ')}` : ''} with committee decision: ${request.decision}`);
+    delivery.financeExpense = financeExpenseDelivery;
     return delivery;
+  }
+
+  async function submitApprovedExpenseToFinanceSystem(db, req, requestId, prepared = null) {
+    const appConfig = getAppConfig();
+    const actorId = req.session && req.session.user ? req.session.user.id : null;
+    const artifacts = prepared || await getDecisionArtifacts(db, requestId);
+    const { request, docs, verifications, assignedReviewers, reviews, reviewSummary } = artifacts;
+    if (!request) return { success: false, reason: 'Request not found.' };
+    if (!isApprovalDecision(request.decision)) {
+      return { success: false, skipped: true, reason: 'Only approved requests are sent to the finance system.' };
+    }
+    if (request.finance_expense_created_at) {
+      return {
+        success: true,
+        alreadySubmitted: true,
+        externalId: request.finance_expense_external_id || `WELFARE-${request.case_id}`
+      };
+    }
+    if (!appConfig.financeExpense.enabled) {
+      const reason = 'FINANCE_EXPENSE_API_URL and a finance API bearer secret are required.';
+      await db.run(
+        'UPDATE requests SET finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=? WHERE id=?',
+        [reason, request.id]
+      );
+      await logActivity(request.id, actorId, 'Finance system submission not configured', reason);
+      return { success: false, skipped: true, reason };
+    }
+    if (typeof fetchImpl !== 'function') {
+      const reason = 'This Node.js runtime does not provide fetch for the finance API call.';
+      await db.run(
+        'UPDATE requests SET finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=? WHERE id=?',
+        [reason, request.id]
+      );
+      await logActivity(request.id, actorId, 'Finance system submission failed', reason);
+      return { success: false, reason };
+    }
+
+    try {
+      const packetBuffer = artifacts.packetBuffer || await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
+      const payload = buildFinanceExpensePayload({ request, packetBuffer });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), appConfig.financeExpense.timeoutMs);
+      let response;
+      try {
+        response = await fetchImpl(financeExpenseEndpoint(appConfig.financeExpense), {
+          method: 'POST',
+          headers: financeExpenseRequestHeaders(appConfig.financeExpense),
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      const responseBody = await response.text();
+      let responseJson = {};
+      try {
+        responseJson = responseBody ? JSON.parse(responseBody) : {};
+      } catch (error) {
+        responseJson = {};
+      }
+      const duplicate = response.status === 409 || !!(responseJson && responseJson.duplicate);
+      if (!response.ok && !duplicate) throw new Error(responseErrorSummary(response.status, responseBody));
+
+      const externalId = responseJson.externalId || responseJson.id || payload.externalId;
+      await db.run(
+        'UPDATE requests SET finance_expense_created_at=CURRENT_TIMESTAMP, finance_expense_external_id=?, finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=NULL WHERE id=?',
+        [String(externalId), request.id]
+      );
+      await logActivity(
+        request.id,
+        actorId,
+        duplicate ? 'Finance expense already exists' : 'Finance expense created',
+        String(externalId)
+      );
+      return { success: true, duplicate, externalId: String(externalId) };
+    } catch (error) {
+      const reason = error && error.name === 'AbortError'
+        ? `Finance API request timed out after ${appConfig.financeExpense.timeoutMs}ms.`
+        : (error instanceof Error ? error.message : String(error));
+      await db.run(
+        'UPDATE requests SET finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=? WHERE id=?',
+        [reason, request.id]
+      );
+      await logActivity(request.id, actorId, 'Finance system submission failed', reason);
+      return { success: false, reason };
+    }
   }
 
   return {
     buildFinancePacketZipBuffer,
     buildFinanceSummaryPdfBuffer,
     emailFinanceDecisionPacket,
-    getDecisionArtifacts
+    getDecisionArtifacts,
+    submitApprovedExpenseToFinanceSystem
   };
 }
 
 module.exports = {
-  createFinancePacketService
+  buildFinanceExpensePayload,
+  createFinancePacketService,
+  financeExpenseEndpoint,
+  financeExpenseRequestHeaders
 };

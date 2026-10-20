@@ -409,6 +409,17 @@
       : financePacketState === 'failed'
         ? 'Failed'
         : 'Not sent yet';
+  const financeExpenseIsApproval = request.decision === 'Full Approval'
+    || request.decision === 'Partial Approval'
+    || request.decision === 'Conditional Approval';
+  const financeExpenseStatusLabel = request.finance_expense_created_at
+    ? 'Created'
+    : request.finance_expense_error
+      ? 'Failed / needs retry'
+      : financeExpenseIsApproval
+        ? 'Pending'
+        : 'Not applicable';
+  const hasFinanceExpenseEndpoint = typeof financeExpenseConfigured !== 'undefined' && financeExpenseConfigured;
 %>
 
 <section class="card panel-card final-decision-card">
@@ -475,7 +486,20 @@
     <% } %>
   </div>
 
-  <p class="muted">After the final committee decision is recorded, the app emails the finance packet and evidence to the CCI USA Finance Team. If the request is approved, finance uses the secure confirmation link to confirm payment.</p>
+  <p class="muted">After an approved final committee decision is recorded, the app creates the expense in the finance system using the selected campus and attached decision packet. It also emails the packet and evidence to the CCI USA Finance Team.</p>
+
+  <% if (flash.financeExpense === 'created') { %>
+    <div class="success-panel"><b>Finance expense created.</b> The approved request was posted to the finance system.</div>
+  <% } else if (flash.financeExpense === 'already-created') { %>
+    <div class="note"><b>Already submitted.</b> This request already has a finance expense, so no duplicate was created.</div>
+  <% } else if (flash.financeExpense === 'not-configured') { %>
+    <div class="alert"><b>Finance API not configured.</b> Set <code>FINANCE_EXPENSE_API_URL</code>, then retry this submission.</div>
+  <% } else if (flash.financeExpense === 'failed') { %>
+    <div class="alert"><b>Finance expense creation failed.</b> The committee decision remains saved and can be retried below.</div>
+  <% } %>
+  <% if (financeExpenseIsApproval && request.finance_expense_error) { %>
+    <div class="alert"><b>Last finance API error:</b> <%= request.finance_expense_error %></div>
+  <% } %>
 
   <% if (flash.financePacket === 'missing-decision') { %>
     <div class="alert"><b>Record the final committee decision before sending the finance packet.</b></div>
@@ -488,6 +512,10 @@
   <% } %>
 
   <div class="info-grid compact">
+    <div><span>Finance system expense</span><strong><%= financeExpenseStatusLabel %></strong></div>
+    <div><span>Finance external ID</span><strong><%= request.finance_expense_external_id || (financeExpenseIsApproval ? `WELFARE-${request.case_id}` : 'N/A') %></strong></div>
+    <div><span>Finance expense created</span><strong><%= request.finance_expense_created_at || 'Not yet' %></strong></div>
+    <div><span>Last API attempt</span><strong><%= request.finance_expense_last_attempt_at || 'Not yet' %></strong></div>
     <div><span>Finance packet sent</span><strong><%= request.finance_packet_sent_at || (financePacketState === 'previewed' ? 'Previewed locally' : financePacketState === 'failed' ? 'Failed' : 'Not sent yet') %></strong></div>
     <div><span>Finance email status</span><strong><%= financePacketStatusLabel %></strong></div>
     <div><span>Payment confirmed</span><strong><%= request.payment_confirmed_at || 'Pending' %></strong></div>
@@ -496,6 +524,13 @@
     <div><span>Payment reference</span><strong><%= request.payment_confirmation_reference || 'Pending' %></strong></div>
     <div><span>Applicant payment notice</span><strong><%= request.applicant_outcome_notified_at || 'No' %></strong></div>
   </div>
+
+  <% if (financeExpenseIsApproval && !request.finance_expense_created_at && hasFinanceExpenseEndpoint) { %>
+    <form method="post" action="/requests/<%= request.id %>/send-finance-expense" class="stacked-form">
+      <button class="btn">Retry Finance System Submission</button>
+      <p class="fine-print">This uses the stable external ID <code>WELFARE-<%= request.case_id %></code> and will not resubmit after a successful response has been recorded.</p>
+    </form>
+  <% } %>
 
   <% if (request.decision) { %>
     <form method="post" action="/requests/<%= request.id %>/send-finance-packet" class="stacked-form">

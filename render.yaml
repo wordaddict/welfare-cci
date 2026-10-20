@@ -42,6 +42,16 @@ services:
         value: CCI USA Finance Team
       - key: FINANCE_TEAM_EMAIL
         sync: false
+      - key: FINANCE_EXPENSE_API_URL
+        sync: false
+      - key: FINANCE_EXPENSE_API_SECRET
+        sync: false
+      - key: FINANCE_EXPENSE_API_TOKEN
+        sync: false
+      - key: FINANCE_EXPENSE_API_TIMEOUT_MS
+        value: "15000"
+      - key: WORKFLOW_EXPENSE_REQUESTER_EMAIL
+        value: adeyinkamichealola@gmail.com
       - key: RESEND_API_KEY
         sync: false
       - key: FROM_EMAIL

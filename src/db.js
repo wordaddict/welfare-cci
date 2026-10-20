@@ -223,6 +223,10 @@ async function initDb() {
       follow_up_needed TEXT NOT NULL DEFAULT 'No',
       finance_confirm_token TEXT,
       finance_packet_sent_at TIMESTAMPTZ,
+      finance_expense_created_at TIMESTAMPTZ,
+      finance_expense_external_id TEXT,
+      finance_expense_last_attempt_at TIMESTAMPTZ,
+      finance_expense_error TEXT,
       payment_confirmed_at TIMESTAMPTZ,
       payment_confirmed_by TEXT,
       payment_confirmation_amount DOUBLE PRECISION,
@@ -424,6 +428,10 @@ async function initDb() {
     ALTER TABLE stored_files ADD COLUMN IF NOT EXISTS secure_url TEXT;
 
     ALTER TABLE requests ALTER COLUMN leader_phone DROP NOT NULL;
+    ALTER TABLE requests ADD COLUMN IF NOT EXISTS finance_expense_created_at TIMESTAMPTZ;
+    ALTER TABLE requests ADD COLUMN IF NOT EXISTS finance_expense_external_id TEXT;
+    ALTER TABLE requests ADD COLUMN IF NOT EXISTS finance_expense_last_attempt_at TIMESTAMPTZ;
+    ALTER TABLE requests ADD COLUMN IF NOT EXISTS finance_expense_error TEXT;
     ALTER TABLE leader_verifications ALTER COLUMN verifier_phone DROP NOT NULL;
 
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS provider TEXT;

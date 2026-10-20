@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const path = require('path');
+const { CCI_CAMPUSES } = require('../campuses');
 const { calculateUrgencyResult, generateCaseId, parseCategoryDetails } = require('../helpers');
 const { PASTORS, getPastorByEmail } = require('../pastors');
 const { validateApplicantSubmission, validateLeadershipVerification, validatePastorVerification } = require('../validators/request-flow-validator');
@@ -230,7 +231,12 @@ CCI America Financial Assistance Committee`
     `, token);
   }
 
-  app.get('/apply', requireRole('applicant'), (req, res) => res.render('apply', { title: 'Financial Assistance Request', error: null, pastors: PASTORS }));
+  app.get('/apply', requireRole('applicant'), (req, res) => res.render('apply', {
+    title: 'Financial Assistance Request',
+    error: null,
+    campuses: CCI_CAMPUSES,
+    pastors: PASTORS
+  }));
 
   app.post('/apply', requireRole('applicant'), upload.fields([
     { name: 'membership_certificate', maxCount: 1 },
@@ -405,7 +411,12 @@ CCI America Financial Assistance Committee`
       }
       res.redirect(`/apply/success/${caseId}?token=${trackingToken}`);
     } catch (err) {
-      res.status(400).render('apply', { title: 'Financial Assistance Request', error: err.message, pastors: PASTORS });
+      res.status(400).render('apply', {
+        title: 'Financial Assistance Request',
+        error: err.message,
+        campuses: CCI_CAMPUSES,
+        pastors: PASTORS
+      });
     }
   });
 

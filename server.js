@@ -241,7 +241,8 @@ mountAdminRoutes(app, {
   sendApplicantCloseoutRequest,
   sendNotification,
   sendPastorDecisionNotice: pastorNotificationService.sendPastorDecisionNotice,
-  sendStoredFile
+  sendStoredFile,
+  submitApprovedExpenseToFinanceSystem: financePacketService.submitApprovedExpenseToFinanceSystem
 });
 
 app.use((err, req, res, next) => {

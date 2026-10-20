@@ -21,6 +21,13 @@ try {
       provider: config.storage.provider,
       cloudinaryFolderPrefix: config.storage.cloudinary.folderPrefix || null
     },
+    financeExpense: {
+      configured: config.financeExpense.enabled,
+      hasApiSecret: !!config.financeExpense.apiSecret,
+      hasApiToken: !!config.financeExpense.apiToken,
+      requesterEmailConfigured: !!config.financeExpense.requesterEmail,
+      timeoutMs: config.financeExpense.timeoutMs
+    },
     jobs: {
       runSchedulers: config.jobs.runSchedulers,
       reviewerSweepIntervalMinutes: config.jobs.reviewerSweepIntervalMinutes,

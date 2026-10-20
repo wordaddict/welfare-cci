@@ -12,7 +12,17 @@
   <h2>1. Basic Information & CCI Connection</h2>
   <div class="two"><label>Full name *<input name="full_name" required></label><label>Email *<input name="email" type="email" required></label></div>
   <div class="two"><label>Phone number *<input name="phone" required></label><label>City and state *<input name="city_state" placeholder="e.g., Harrisonburg, VA" required></label></div>
-  <div class="two"><label>Which CCI community are you connected to? *<select name="cci_connection_type" required><option value="">Select</option><option>Physical campus</option><option>MAP group</option><option>Cell church</option><option>Virtual campus</option><option>Other</option></select></label><label>Name of campus, MAP, cell church, or community *<input name="cci_community_name" required></label></div>
+  <div class="two">
+    <label>Which CCI community are you connected to? *<select name="cci_connection_type" required><option value="">Select</option><option>Physical campus</option><option>MAP group</option><option>Cell church</option><option>Virtual campus</option><option>Other</option></select></label>
+    <label>Campus *
+      <select name="cci_community_name" required>
+        <option value="">Select campus</option>
+        <% (typeof campuses !== 'undefined' ? campuses : []).forEach((campus) => { %>
+          <option value="<%= campus %>"><%= campus %></option>
+        <% }) %>
+      </select>
+    </label>
+  </div>
   <label>How long have you been connected to CCI? *<select name="connection_duration" required><option value="">Select</option><option>Less than 1 month</option><option>1–3 months</option><option>3–6 months</option><option>6–12 months</option><option>More than 1 year</option></select></label>
 
   <h3>Official Membership</h3>

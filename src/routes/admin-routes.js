@@ -33,6 +33,13 @@ function financePacketStateForView(request, financeNotification) {
   return 'pending';
 }
 
+function financeExpenseRedirectState(delivery) {
+  if (delivery && delivery.success) return delivery.alreadySubmitted || delivery.duplicate ? 'already-created' : 'created';
+  if (delivery && delivery.skipped && /required|not configured/i.test(delivery.reason || '')) return 'not-configured';
+  if (delivery && delivery.skipped) return 'not-applicable';
+  return 'failed';
+}
+
 function toNumber(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -177,7 +184,8 @@ function mountAdminRoutes(app, {
   sendApplicantCloseoutRequest,
   sendNotification,
   sendPastorDecisionNotice,
-  sendStoredFile
+  sendStoredFile,
+  submitApprovedExpenseToFinanceSystem
 }) {
   app.get('/uploads/:filename', requireRole('admin'), async (req, res) => {
     const safeName = path.basename(req.params.filename);
@@ -383,11 +391,13 @@ function mountAdminRoutes(app, {
       closureFollowup,
       financeNotification,
       financePacketState: financePacketStateForView(request, financeNotification),
+      financeExpenseConfigured: getAppConfig().financeExpense.enabled,
       financeTeamEmail: getAppConfig().jobs.financeTeamEmail,
       pastors: PASTORS,
       reviewerAutoAssignEnabled: getAppConfig().jobs.autoAssignReviewers,
       flash: {
         decisionRecorded: req.query.decisionRecorded === '1',
+        financeExpense: req.query.financeExpense || '',
         financePacket: req.query.financePacket || '',
         applicantOutcome: req.query.applicantOutcome || '',
         pastorCorrection: req.query.pastorCorrection || ''
@@ -621,8 +631,11 @@ CCI America Financial Assistance Committee`
       req.body.decision, req.body.amount_approved || null, req.body.decision_notes || '', req.body.pastorate_required || 'No', req.body.pastorate_decision || '', req.body.documents_complete || 'Pending', status, req.params.id
     ]);
     await logActivity(req.params.id, req.session.user.id, 'Decision recorded', req.body.decision);
-    const financePacketDelivery = await emailFinanceDecisionPacket(db, req, req.params.id);
 
+    const financePacketDelivery = await emailFinanceDecisionPacket(db, req, req.params.id);
+    const financeExpenseDelivery = financePacketDelivery && financePacketDelivery.financeExpense
+      ? financePacketDelivery.financeExpense
+      : { success: false, skipped: true, reason: 'Finance expense submission did not run.' };
     const updatedRequest = await db.get('SELECT * FROM requests WHERE id=?', req.params.id);
     if (updatedRequest) {
       await sendPastorDecisionNotice(db, updatedRequest, req.session.user.id);
@@ -658,7 +671,8 @@ CCI America Financial Assistance Committee`
     }
 
     const financePacketQuery = financePacketRedirectState(financePacketDelivery);
-    res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=${financePacketQuery}&applicantOutcome=${applicantOutcomeQuery}`);
+    const financeExpenseQuery = financeExpenseRedirectState(financeExpenseDelivery);
+    res.redirect(`/requests/${req.params.id}?decisionRecorded=1&financePacket=${financePacketQuery}&financeExpense=${financeExpenseQuery}&applicantOutcome=${applicantOutcomeQuery}`);
   });
 
   app.post('/requests/:id/send-finance-packet', requireRole('admin'), async (req, res) => {
@@ -671,6 +685,18 @@ CCI America Financial Assistance Committee`
 
     const delivery = await emailFinanceDecisionPacket(db, req, req.params.id);
     return res.redirect(`/requests/${req.params.id}?financePacket=${financePacketRedirectState(delivery)}`);
+  });
+
+  app.post('/requests/:id/send-finance-expense', requireRole('admin'), async (req, res) => {
+    const db = await getDb();
+    const request = await db.get('SELECT id, decision FROM requests WHERE id=?', req.params.id);
+    if (!request) return res.status(404).render('error', { title: 'Not found', message: 'Request not found.' });
+    if (!isApprovalDecision(request.decision)) {
+      return res.redirect(`/requests/${req.params.id}?financeExpense=not-applicable`);
+    }
+
+    const delivery = await submitApprovedExpenseToFinanceSystem(db, req, req.params.id);
+    return res.redirect(`/requests/${req.params.id}?financeExpense=${financeExpenseRedirectState(delivery)}`);
   });
 
   app.post('/requests/:id/send-closeout-now', requireRole('admin'), async (req, res) => {

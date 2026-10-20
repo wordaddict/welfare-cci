@@ -1,4 +1,5 @@
 const { normalizeMultiValue } = require('../helpers');
+const { CCI_CAMPUSES } = require('../campuses');
 const { getPastorByEmail } = require('../pastors');
 
 const APPLICANT_REQUIRED_FIELDS = [
@@ -87,6 +88,10 @@ function assertFieldsPresent(body, fields, errorMessage) {
 
 function validateApplicantSubmission({ body, files }) {
   assertFieldsPresent(body, APPLICANT_REQUIRED_FIELDS, 'Please complete all required fields before submitting.');
+
+  if (!CCI_CAMPUSES.includes(body.cci_community_name)) {
+    throw new Error('Please select a campus from the approved list.');
+  }
 
   if (!['Yes', 'No'].includes(body.membership_status)) {
     throw new Error('Please indicate whether you are an official member of CCI.');

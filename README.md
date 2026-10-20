@@ -70,6 +70,17 @@ Recommended production pieces:
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
 
+Finance system integration:
+
+- `FINANCE_EXPENSE_API_URL` is the finance app base URL. The workflow calls `/api/integrations/workflow/expenses` after an approved final committee decision.
+- `FINANCE_EXPENSE_API_SECRET` is the shared bearer token (matching the finance app's `WORKFLOW_EXPENSE_API_SECRET`).
+- `FINANCE_EXPENSE_API_TOKEN` is also supported as an alternate bearer token and takes precedence when set.
+- `FINANCE_EXPENSE_API_TIMEOUT_MS` defaults to 15 seconds.
+- `WORKFLOW_EXPENSE_REQUESTER_EMAIL` identifies the active finance-system service user that owns workflow-created expenses. It is configured as `adeyinkamichealola@gmail.com`.
+- The applicant selects a campus from the supported finance-system identifiers; that exact value is posted in the expense payload.
+
+The payload always sends `team: FOLLOW_UP`. Legacy `FINANCE_EXPENSE_DEFAULT_TEAM` and `FINANCE_EXPENSE_DEFAULT_CAMPUS` settings are intentionally ignored so they cannot override the selected campus.
+
 Optional production scheduler pieces:
 
 - `RUN_SCHEDULERS=true` for in-process scheduling
