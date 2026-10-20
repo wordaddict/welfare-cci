@@ -35,6 +35,7 @@ function financePacketStateForView(request, financeNotification) {
 
 function financeExpenseRedirectState(delivery) {
   if (delivery && delivery.success) return delivery.alreadySubmitted || delivery.duplicate ? 'already-created' : 'created';
+  if (delivery && delivery.configuration) return 'not-configured';
   if (delivery && delivery.skipped && /required|not configured/i.test(delivery.reason || '')) return 'not-configured';
   if (delivery && delivery.skipped) return 'not-applicable';
   return 'failed';

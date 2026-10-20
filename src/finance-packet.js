@@ -10,6 +10,31 @@ const { isApprovalDecision, reviewScoreSummary } = require('./request-assessment
 
 const MAX_EMAIL_SIZE_BYTES = 40 * 1024 * 1024;
 const FINANCE_CATEGORY = 'Financial Welfare/Assistance';
+const FINANCE_ITEM_TEMP_ID = 'welfare-assistance';
+const MAX_FINANCE_ATTACHMENTS = 10;
+const MAX_FINANCE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_FINANCE_ATTACHMENTS_TOTAL_BYTES = 25 * 1024 * 1024;
+const FINANCE_ATTACHMENT_MIME_TYPES = Object.freeze({
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
+  '.png': ['image/png'],
+  '.pdf': ['application/pdf'],
+  '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  '.xls': ['application/vnd.ms-excel', 'application/msexcel', 'application/x-msexcel'],
+  '.csv': ['text/csv', 'application/csv', 'application/vnd.ms-excel'],
+  '.ods': ['application/vnd.oasis.opendocument.spreadsheet']
+});
+
+class FinanceApiError extends Error {
+  constructor(message, { status = null, issues = [], retryable = false, configuration = false } = {}) {
+    super(message);
+    this.name = 'FinanceApiError';
+    this.status = status;
+    this.issues = issues;
+    this.retryable = retryable;
+    this.configuration = configuration;
+  }
+}
 
 function approvedAmountCents(request) {
   const hasApprovedAmount = request.amount_approved !== null
@@ -23,15 +48,58 @@ function approvedAmountCents(request) {
   return cents;
 }
 
-function buildFinanceExpensePayload({ request, packetBuffer }) {
+function financeExternalId(request) {
+  return `WELFARE-${request.case_id}`;
+}
+
+function buildFinanceAttachments(attachmentFiles) {
+  if (!Array.isArray(attachmentFiles) || attachmentFiles.length === 0) {
+    throw new Error('At least one finance attachment is required.');
+  }
+  if (attachmentFiles.length > MAX_FINANCE_ATTACHMENTS) {
+    throw new Error(`Finance accepts a maximum of ${MAX_FINANCE_ATTACHMENTS} attachments per expense.`);
+  }
+
+  let combinedBytes = 0;
+  return attachmentFiles.map((file, index) => {
+    if (!file || !Buffer.isBuffer(file.buffer)) {
+      throw new Error(`Finance attachment ${index + 1} does not contain readable file bytes.`);
+    }
+
+    const fileName = path.basename(String(file.fileName || '').trim());
+    const mimeType = String(file.mimeType || '').trim();
+    const extension = path.extname(fileName).toLowerCase();
+    const supportedMimes = FINANCE_ATTACHMENT_MIME_TYPES[extension];
+    if (!fileName || !supportedMimes || !supportedMimes.includes(mimeType.toLowerCase())) {
+      throw new Error(`Finance attachment "${fileName || `File ${index + 1}`}" must be a JPG, PNG, PDF, XLSX, XLS, CSV, or ODS file with a matching MIME type.`);
+    }
+    if (file.buffer.length > MAX_FINANCE_ATTACHMENT_BYTES) {
+      throw new Error(`Finance attachment "${fileName}" exceeds the 10 MB per-file limit.`);
+    }
+
+    combinedBytes += file.buffer.length;
+    if (combinedBytes > MAX_FINANCE_ATTACHMENTS_TOTAL_BYTES) {
+      throw new Error('Finance attachments exceed the 25 MB combined decoded-size limit.');
+    }
+
+    return {
+      itemId: String(file.itemId || FINANCE_ITEM_TEMP_ID),
+      fileName,
+      mimeType,
+      base64: file.buffer.toString('base64')
+    };
+  });
+}
+
+function buildFinanceExpensePayload({ request, attachmentFiles }) {
   if (!request || !request.case_id) throw new Error('A valid welfare request is required.');
   if (!CCI_CAMPUSES.includes(request.cci_community_name)) {
     throw new Error(`The request campus "${request.cci_community_name || 'Not provided'}" is not supported by the finance system.`);
   }
-  if (!Buffer.isBuffer(packetBuffer)) throw new Error('A finance packet ZIP is required.');
 
   const amountCents = approvedAmountCents(request);
-  const externalId = `WELFARE-${request.case_id}`;
+  const externalId = financeExternalId(request);
+  const attachments = buildFinanceAttachments(attachmentFiles);
 
   return {
     externalId,
@@ -50,23 +118,15 @@ function buildFinanceExpensePayload({ request, packetBuffer }) {
     payeeName: request.zelle_name || request.full_name,
     payeeZelle: request.zelle_email || request.zelle_phone || '',
     items: [{
+      tempId: FINANCE_ITEM_TEMP_ID,
       description: 'Approved financial assistance',
       category: FINANCE_CATEGORY,
       quantity: 1,
       unitPriceCents: amountCents,
       amountCents
     }],
-    packet: {
-      fileName: `${externalId}.zip`,
-      mimeType: 'application/zip',
-      base64: packetBuffer.toString('base64')
-    }
+    attachments
   };
-}
-
-function responseErrorSummary(status, body) {
-  const normalized = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-  return `Finance API returned HTTP ${status}${normalized ? `: ${normalized}` : '.'}`;
 }
 
 function financeExpenseRequestHeaders(config) {
@@ -79,6 +139,89 @@ function financeExpenseRequestHeaders(config) {
 
 function financeExpenseEndpoint(config) {
   return `${String(config.apiUrl || '').replace(/\/$/, '')}/api/integrations/workflow/expenses`;
+}
+
+function normalizeFinanceApiIssues(issues) {
+  if (!Array.isArray(issues)) return [];
+  return issues.map((issue) => ({
+    code: String(issue && issue.code ? issue.code : 'validation_error'),
+    path: Array.isArray(issue && issue.path) ? issue.path.map(String) : [],
+    message: String(issue && issue.message ? issue.message : 'Invalid value').slice(0, 300)
+  }));
+}
+
+async function postFinanceExpensePayload(payload, financeConfig, fetchImpl = global.fetch) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), financeConfig.timeoutMs);
+  let response;
+  try {
+    response = await fetchImpl(financeExpenseEndpoint(financeConfig), {
+      method: 'POST',
+      headers: financeExpenseRequestHeaders(financeConfig),
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const responseBody = await response.text();
+  let responseJson = {};
+  try {
+    responseJson = responseBody ? JSON.parse(responseBody) : {};
+  } catch (error) {
+    responseJson = {};
+  }
+
+  const duplicate = response.status === 200 && responseJson.duplicate === true;
+  if (response.status === 201 || duplicate) {
+    return {
+      duplicate,
+      expenseId: responseJson.expense && responseJson.expense.id
+        ? String(responseJson.expense.id)
+        : (responseJson.id ? String(responseJson.id) : null),
+      externalId: String(
+        responseJson.externalId
+        || (responseJson.expense && responseJson.expense.externalId)
+        || payload.externalId
+      ),
+      status: response.status
+    };
+  }
+
+  if (response.status === 400) {
+    const issues = normalizeFinanceApiIssues(responseJson.issues);
+    const detail = issues.length
+      ? issues.map(issue => `${issue.path.join('.') || 'payload'}: ${issue.message}`).join('; ')
+      : 'The Finance API rejected the expense payload.';
+    throw new FinanceApiError(`Finance API validation failed (HTTP 400): ${detail}`, {
+      status: 400,
+      issues,
+      retryable: false
+    });
+  }
+
+  if (response.status === 401 || response.status === 503) {
+    const guidance = response.status === 401
+      ? 'Verify the Finance shared secret.'
+      : 'Verify the Finance requester account and service configuration.';
+    throw new FinanceApiError(
+      `Finance API configuration failed (HTTP ${response.status}): ${guidance}`,
+      { status: response.status, retryable: false, configuration: true }
+    );
+  }
+
+  if (response.status >= 500) {
+    throw new FinanceApiError(
+      `Finance API temporary failure (HTTP ${response.status}). Retry the submission after the Finance service recovers.`,
+      { status: response.status, retryable: true }
+    );
+  }
+
+  throw new FinanceApiError(
+    `Finance API rejected the request with HTTP ${response.status}.`,
+    { status: response.status, retryable: false }
+  );
 }
 
 function estimateBase64Size(byteLength) {
@@ -456,39 +599,7 @@ function buildFinanceSummaryPdfBuffer({ request, docs = [], verifications, assig
   });
 }
 
-function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotification, appendStoredFileToArchive, getStoredFileByKey, fetchImpl = global.fetch }) {
-  async function postFinanceExpensePayload(payload, financeConfig) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), financeConfig.timeoutMs);
-    let response;
-    try {
-      response = await fetchImpl(financeExpenseEndpoint(financeConfig), {
-        method: 'POST',
-        headers: financeExpenseRequestHeaders(financeConfig),
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const responseBody = await response.text();
-    let responseJson = {};
-    try {
-      responseJson = responseBody ? JSON.parse(responseBody) : {};
-    } catch (error) {
-      responseJson = {};
-    }
-    const duplicate = response.status === 409 || !!(responseJson && responseJson.duplicate);
-    if (!response.ok && !duplicate) throw new Error(responseErrorSummary(response.status, responseBody));
-
-    return {
-      duplicate,
-      externalId: String(responseJson.externalId || responseJson.id || payload.externalId),
-      status: response.status
-    };
-  }
-
+function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotification, appendStoredFileToArchive, getStoredFileBuffer, getStoredFileByKey, fetchImpl = global.fetch }) {
   async function buildFinancePacketZipBuffer({ request, docs = [], verifications, assignedReviewers, reviews, reviewSummary }) {
     const db = await getDb();
     const pdfBuffer = await buildFinanceSummaryPdfBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
@@ -517,10 +628,55 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
     });
   }
 
+  async function buildFinanceExpenseAttachmentFiles(db, { request, docs = [], verifications = [], assignedReviewers = [], reviews = [], reviewSummary }) {
+    if (typeof getStoredFileBuffer !== 'function') {
+      throw new Error('The stored-file buffer reader is not configured for Finance submissions.');
+    }
+
+    const summaryBuffer = await buildFinanceSummaryPdfBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
+    const attachmentFiles = [{
+      itemId: FINANCE_ITEM_TEMP_ID,
+      fileName: `WELFARE-${request.case_id}-committee-approval-summary.pdf`,
+      mimeType: 'application/pdf',
+      buffer: summaryBuffer
+    }];
+    const seenStorageKeys = new Set();
+
+    async function appendStoredAttachment(storageKey, fallbackName, fallbackMimeType) {
+      if (!storageKey || seenStorageKeys.has(storageKey)) return;
+      seenStorageKeys.add(storageKey);
+      const storedFile = await getStoredFileByKey(db, storageKey);
+      if (!storedFile) {
+        throw new Error(`Finance attachment "${fallbackName || storageKey}" could not be found in file storage.`);
+      }
+      const buffer = await getStoredFileBuffer(storedFile);
+      if (!Buffer.isBuffer(buffer)) {
+        throw new Error(`Finance attachment "${storedFile.original_name || fallbackName || storageKey}" could not be read from file storage.`);
+      }
+      attachmentFiles.push({
+        itemId: FINANCE_ITEM_TEMP_ID,
+        fileName: storedFile.original_name || fallbackName || storageKey,
+        mimeType: storedFile.mime_type || fallbackMimeType || 'application/octet-stream',
+        buffer
+      });
+    }
+
+    for (const document of docs) {
+      await appendStoredAttachment(document.stored_name, document.original_name, document.mime_type);
+    }
+    for (const verification of verifications) {
+      if (verification.support_letter_file) {
+        await appendStoredAttachment(verification.support_letter_file, verification.support_letter_file, null);
+      }
+    }
+
+    return attachmentFiles;
+  }
+
   async function getDecisionArtifacts(db, requestId) {
     const request = await db.get('SELECT * FROM requests WHERE id=?', requestId);
-    const docs = await db.all('SELECT * FROM documents WHERE request_id=?', requestId);
-    const verifications = await db.all('SELECT v.*, COALESCE(u.name, v.verifier_name) as verifier_name FROM leader_verifications v LEFT JOIN users u ON u.id=v.verified_by WHERE v.request_id=? ORDER BY v.created_at DESC', requestId);
+    const docs = await db.all('SELECT * FROM documents WHERE request_id=? ORDER BY uploaded_at ASC, id ASC', requestId);
+    const verifications = await db.all('SELECT v.*, COALESCE(u.name, v.verifier_name) as verifier_name FROM leader_verifications v LEFT JOIN users u ON u.id=v.verified_by WHERE v.request_id=? ORDER BY v.created_at DESC, v.id DESC', requestId);
     const assignedReviewers = await db.all(`
       SELECT rr.*, u.name, COALESCE(u.reviewer_contact_email,u.email) as email
       FROM request_reviewers rr
@@ -554,8 +710,7 @@ function createFinancePacketService({ baseUrl, getDb, logActivity, sendNotificat
           verifications,
           assignedReviewers,
           reviews,
-          reviewSummary,
-          packetBuffer
+          reviewSummary
         })
       : { success: false, skipped: true, reason: 'Only approved requests are sent to the finance system.' };
     const estimatedEncodedSize = estimateBase64Size(packetBuffer.length);
@@ -656,7 +811,7 @@ CCI America Financial Assistance Committee`;
         [reason, request.id]
       );
       await logActivity(request.id, actorId, 'Finance system submission not configured', reason);
-      return { success: false, skipped: true, reason };
+      return { success: false, skipped: true, configuration: true, retryable: false, reason };
     }
     if (typeof fetchImpl !== 'function') {
       const reason = 'This Node.js runtime does not provide fetch for the finance API call.';
@@ -665,13 +820,23 @@ CCI America Financial Assistance Committee`;
         [reason, request.id]
       );
       await logActivity(request.id, actorId, 'Finance system submission failed', reason);
-      return { success: false, reason };
+      return { success: false, configuration: true, retryable: false, reason };
     }
 
     try {
-      const packetBuffer = artifacts.packetBuffer || await buildFinancePacketZipBuffer({ request, docs, verifications, assignedReviewers, reviews, reviewSummary });
-      const payload = buildFinanceExpensePayload({ request, packetBuffer });
-      const submission = await postFinanceExpensePayload(payload, appConfig.financeExpense);
+      const attachmentFiles = await buildFinanceExpenseAttachmentFiles(db, {
+        request,
+        docs,
+        verifications,
+        assignedReviewers,
+        reviews,
+        reviewSummary
+      });
+      const payload = buildFinanceExpensePayload({
+        request,
+        attachmentFiles
+      });
+      const submission = await postFinanceExpensePayload(payload, appConfig.financeExpense, fetchImpl);
       const externalId = submission.externalId;
       await db.run(
         'UPDATE requests SET finance_expense_created_at=CURRENT_TIMESTAMP, finance_expense_external_id=?, finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=NULL WHERE id=?',
@@ -688,16 +853,34 @@ CCI America Financial Assistance Committee`;
       const reason = error && error.name === 'AbortError'
         ? `Finance API request timed out after ${appConfig.financeExpense.timeoutMs}ms.`
         : (error instanceof Error ? error.message : String(error));
+      const retryable = error && error.name === 'AbortError'
+        ? true
+        : (error instanceof FinanceApiError ? error.retryable : false);
+      const configuration = error instanceof FinanceApiError ? error.configuration : false;
+      const issues = error instanceof FinanceApiError ? error.issues : [];
       await db.run(
         'UPDATE requests SET finance_expense_last_attempt_at=CURRENT_TIMESTAMP, finance_expense_error=? WHERE id=?',
         [reason, request.id]
       );
-      await logActivity(request.id, actorId, 'Finance system submission failed', reason);
-      return { success: false, reason };
+      await logActivity(
+        request.id,
+        actorId,
+        configuration ? 'Finance system submission configuration failed' : (retryable ? 'Finance system submission failed' : 'Finance system submission rejected'),
+        reason
+      );
+      return {
+        success: false,
+        status: error instanceof FinanceApiError ? error.status : null,
+        retryable,
+        configuration,
+        issues,
+        reason
+      };
     }
   }
 
   return {
+    buildFinanceExpenseAttachmentFiles,
     buildFinancePacketZipBuffer,
     buildFinanceSummaryPdfBuffer,
     emailFinanceDecisionPacket,
@@ -707,8 +890,11 @@ CCI America Financial Assistance Committee`;
 }
 
 module.exports = {
+  FinanceApiError,
+  buildFinanceAttachments,
   buildFinanceExpensePayload,
   createFinancePacketService,
   financeExpenseEndpoint,
-  financeExpenseRequestHeaders
+  financeExpenseRequestHeaders,
+  postFinanceExpensePayload
 };

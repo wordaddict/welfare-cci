@@ -19,7 +19,7 @@ const { mountAuthRoutes } = require('./src/routes/auth-routes');
 const { mountPublicRoutes } = require('./src/routes/public-routes');
 const { createPastorNotificationService } = require('./src/pastor-notifications');
 const { createReviewerWorkflow } = require('./src/reviewer-workflow');
-const { appendStoredFileToArchive, getStoredFileByKey, saveUploadedFile, sendStoredFile } = require('./src/storage');
+const { appendStoredFileToArchive, getStoredFileBuffer, getStoredFileByKey, saveUploadedFile, sendStoredFile } = require('./src/storage');
 
 const app = express();
 let appConfig;
@@ -77,6 +77,7 @@ const financePacketService = createFinancePacketService({
   logActivity,
   sendNotification,
   appendStoredFileToArchive,
+  getStoredFileBuffer,
   getStoredFileByKey
 });
 
@@ -90,7 +91,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 8 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const allowed = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/msexcel',
+      'application/x-msexcel',
+      'text/csv',
+      'application/csv',
+      'application/vnd.oasis.opendocument.spreadsheet'
+    ];
     cb(null, allowed.includes(file.mimetype));
   }
 });

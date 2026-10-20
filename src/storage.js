@@ -66,4 +66,4 @@ async function appendStoredFileToArchive(archive, fileRecord, archivePath) {
   archive.append(buffer, { name: archivePath });
 }
 
-module.exports = { appendStoredFileToArchive, getStoredFileByKey, saveUploadedFile, sendStoredFile };
+module.exports = { appendStoredFileToArchive, getStoredFileBuffer, getStoredFileByKey, saveUploadedFile, sendStoredFile };

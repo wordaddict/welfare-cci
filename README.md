@@ -78,6 +78,8 @@ Finance system integration:
 - `FINANCE_EXPENSE_API_TIMEOUT_MS` defaults to 15 seconds.
 - `WORKFLOW_EXPENSE_REQUESTER_EMAIL` identifies the active finance-system service user that owns workflow-created expenses. It is configured as `adeyinkamichealola@gmail.com`.
 - The applicant selects a campus from the supported finance-system identifiers; that exact value is posted in the expense payload.
+- The Finance API receives the generated committee summary and all supported evidence files as individual Base64 attachments mapped to the stable `welfare-assistance` item. Supported formats are JPG, PNG, PDF, XLSX, XLS, CSV, and ODS; limits are 10 files, 10 MB each, and 25 MB combined decoded size.
+- The separate Finance email keeps the existing ZIP packet containing the summary and supporting evidence.
 
 The payload always sends `team: FOLLOW_UP`. Legacy `FINANCE_EXPENSE_DEFAULT_TEAM` and `FINANCE_EXPENSE_DEFAULT_CAMPUS` settings are intentionally ignored so they cannot override the selected campus.
 

@@ -85,6 +85,8 @@ heroku config:set AUTO_ASSIGN_REVIEWERS=false
 
 `FINANCE_EXPENSE_API_SECRET` is sent as a bearer token to `/api/integrations/workflow/expenses` and must match the finance app's `WORKFLOW_EXPENSE_API_SECRET`. `WORKFLOW_EXPENSE_REQUESTER_EMAIL` must resolve to an active service user in the finance system. `FINANCE_EXPENSE_API_TOKEN` is also supported as an alternate bearer token. Approved final committee decisions are submitted automatically. A failed API call does not roll back the recorded committee decision; Admin can retry it from the request page.
 
+The API sends the generated committee summary and all supported evidence files as individual Base64 attachments mapped to the stable `welfare-assistance` item. Supported formats are JPG, PNG, PDF, XLSX, XLS, CSV, and ODS; limits are 10 files, 10 MB each, and 25 MB combined decoded size. The Finance email separately carries the existing ZIP packet.
+
 The expense payload always uses the `FOLLOW_UP` team and the campus selected on the application. Do not configure legacy default-team or default-campus overrides for this workflow.
 
 ## 6. Choose a scheduler mode
